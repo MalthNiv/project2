@@ -23,6 +23,12 @@
 static thread_func start_process NO_RETURN;
 static bool load(const char* cmdline, void (**eip)(void), void** esp);
 
+/* Global: Parsed array of arguments to be passed between process_execute and
+ * setup_stack. */
+
+char* parsed_array[MAX_ARGS_PER_COMMAND];
+int counter;
+
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
@@ -38,18 +44,19 @@ tid_t process_execute(const char* file_name) {
   strlcpy(fn_copy, file_name, PGSIZE);
 
   /* Parse FILE_NAME to get the file name and arguments. */
-  char* parsed_array[16];  // TBD: global or not? // ALSO REpLACE WITH MACRO
   char* savepos;
   char* first = strtok_r(fn_copy, ' ', &savepos);
   char* temp = first;
   parsed_array[0] = temp;
-  int counter = 1;
+  ++counter;
+  // int counter = 1; POSSIBLE RACE CONDITION *eyes*
 
   while (temp != NULL) {
     temp = strtok_r(NULL, ' ', &savepos);
     parsed_array[counter] = temp;
     ++counter;
   }
+  parsed_array[counter] = NULL;
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create(first, PRI_DEFAULT, start_process, fn_copy);
@@ -399,11 +406,57 @@ static bool setup_stack(void** esp) {
   if (kpage != NULL) {
     success = install_page(((uint8_t*)PHYS_BASE) - PGSIZE, kpage, true);
     if (success)
-      *esp = (void*)((char*)PHYS_BASE - 12);
+      // *esp = (void*)((char*)PHYS_BASE - 12);
+      *esp = PHYS_BASE;
     else
       palloc_free_page(kpage);
   }
+
+  int total_size = get_total_size();
+  int word_align = total_size % 16;
+  total_size += word_align;
+
+  // put the strings on the stack
+  for (int i = 0; i < counter; ++i) {
+    esp = (void**)((char*)esp - strlen(parsed_array[counter]) + 1);
+    strlcpy(esp, parsed_array[counter]);
+  }
+
+  // put word_align 0s on the stack
+  for (int i = 0; i < word_align; ++i) {
+    esp = (void**)((char*)esp - 1);
+    *esp = 0;
+  }
+
+  // put the pointers to the strings on the stack
+  for (int i = counter; i >= 0; --i) {
+    esp = (void**)((char*)esp - 8);
+    *esp = parsed_array[i];
+  }
+
+  // put the metadata (argv pointer, argc, and the return address) on the stack
+  esp = (void**)((char*)esp - 8);
+  *esp = &parsed_array[0];
+  esp = (void**)((char*)esp - 4);
+  *esp = counter;
+  esp = (void**)((char*)esp - 8);
+  *esp = 0;
+
   return success;
+}
+
+/**
+ * Calculates total length of arguments in an array (excluding the bytes of
+ * word_align for 16B alignment.)
+ */
+int get_total_size() {
+  char* temp = parsed_array[0];
+  size_t sum = 0;
+
+  while (temp != NULL) {
+    sum += strlen(temp) + 1 + 8;
+  }
+  sum += 28;
 }
 
 /* Adds a mapping from user virtual address UPAGE to kernel

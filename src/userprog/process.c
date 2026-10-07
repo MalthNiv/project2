@@ -21,13 +21,9 @@
 #include "userprog/tss.h"
 
 static thread_func start_process NO_RETURN;
-static bool load(const char* cmdline, void (**eip)(void), void** esp);
-
-/* Global: Parsed array of arguments to be passed between process_execute and
- * setup_stack. */
-
-char* parsed_array[MAX_ARGS_PER_COMMAND];
-int counter;
+static bool load(const char* cmdline, void (**eip)(void), void** esp,
+                 Command* current_command);
+int get_total_size(Command* current_command);  // self-added
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -43,31 +39,36 @@ tid_t process_execute(const char* file_name) {
   if (fn_copy == NULL) return TID_ERROR;
   strlcpy(fn_copy, file_name, PGSIZE);
 
+  /* Create our command struct. */
+  Command* current_command = malloc(sizeof(current_command));
+
   /* Parse FILE_NAME to get the file name and arguments. */
   char* savepos;
-  char* first = strtok_r(fn_copy, ' ', &savepos);
+  char* first = strtok_r(fn_copy, " ", &savepos);
   char* temp = first;
-  parsed_array[0] = temp;
-  ++counter;
-  // int counter = 1; POSSIBLE RACE CONDITION *eyes*
+  current_command->parsed_array[0] = temp;
+  ++current_command->counter;
+  current_command->file_name = first;
 
   while (temp != NULL) {
-    temp = strtok_r(NULL, ' ', &savepos);
-    parsed_array[counter] = temp;
-    ++counter;
+    temp = strtok_r(NULL, " ", &savepos);
+    current_command->parsed_array[current_command->counter] = temp;
+    ++current_command->counter;
   }
-  parsed_array[counter] = NULL;
+  current_command->parsed_array[current_command->counter] = NULL;
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create(first, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create(current_command->file_name, PRI_DEFAULT, start_process,
+                      fn_copy);
   if (tid == TID_ERROR) palloc_free_page(fn_copy);
+  free(current_command);
   return tid;
 }
 
 /* A thread function that loads a user process and starts it
    running. */
-static void start_process(void* file_name_) {
-  char* file_name = file_name_;
+static void start_process(void* current_command) {
+  char* file_name = ((Command*)(current_command))->file_name;
   struct intr_frame if_;
   bool success;
 
@@ -76,7 +77,7 @@ static void start_process(void* file_name_) {
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load(file_name, &if_.eip, &if_.esp);
+  success = load(file_name, &if_.eip, &if_.esp, current_command);
 
   /* If load failed, quit. */
   palloc_free_page(file_name);
@@ -200,7 +201,7 @@ struct Elf32_Phdr {
 #define PF_W 2 /* Writable. */
 #define PF_R 4 /* Readable. */
 
-static bool setup_stack(void** esp);
+static bool setup_stack(void** esp, Command* current_command);
 static bool validate_segment(const struct Elf32_Phdr*, struct file*);
 static bool load_segment(struct file* file, off_t ofs, uint8_t* upage,
                          uint32_t read_bytes, uint32_t zero_bytes,
@@ -210,7 +211,8 @@ static bool load_segment(struct file* file, off_t ofs, uint8_t* upage,
    Stores the executable's entry point into *EIP
    and its initial stack pointer into *ESP.
    Returns true if successful, false otherwise. */
-bool load(const char* file_name, void (**eip)(void), void** esp) {
+bool load(const char* file_name, void (**eip)(void), void** esp,
+          Command* current_command) {
   struct thread* t = thread_current();
   struct Elf32_Ehdr ehdr;
   struct file* file = NULL;
@@ -290,7 +292,7 @@ bool load(const char* file_name, void (**eip)(void), void** esp) {
   }
 
   /* Set up stack. */
-  if (!setup_stack(esp)) goto done;
+  if (!setup_stack(esp, current_command)) goto done;
 
   /* Start address. */
   *eip = (void (*)(void))ehdr.e_entry;
@@ -398,65 +400,74 @@ static bool load_segment(struct file* file, off_t ofs, uint8_t* upage,
 
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
-static bool setup_stack(void** esp) {
+static bool setup_stack(void** esp, Command* current_command) {
   uint8_t* kpage;
   bool success = false;
 
   kpage = palloc_get_page(PAL_USER | PAL_ZERO);
   if (kpage != NULL) {
     success = install_page(((uint8_t*)PHYS_BASE) - PGSIZE, kpage, true);
-    if (success)
-      // *esp = (void*)((char*)PHYS_BASE - 12);
-      *esp = PHYS_BASE;
-    else
+    if (!success) {
       palloc_free_page(kpage);
-  }
+      return success;
+    }
 
-  int total_size = get_total_size();
-  int word_align = total_size % 16;
-  total_size += word_align;
+    *esp = PHYS_BASE;
 
-  // put the strings on the stack
-  for (int i = 0; i < counter; ++i) {
-    esp = (void**)((char*)esp - strlen(parsed_array[counter]) + 1);
-    strlcpy(esp, parsed_array[counter]);
-  }
+    int total_size = get_total_size(current_command);
+    int word_align = total_size % 16;
+    total_size += word_align;
 
-  // put word_align 0s on the stack
-  for (int i = 0; i < word_align; ++i) {
-    esp = (void**)((char*)esp - 1);
-    *esp = 0;
-  }
+    // put the strings on the stack
+    for (int i = 0; i < current_command->counter; ++i) {
+      int length =
+          strlen(current_command->parsed_array[current_command->counter]) + 1;
+      *esp = (void**)((char*)esp - length);
+      strlcpy(*esp, current_command->parsed_array[current_command->counter],
+              length);
+    }
 
-  // put the pointers to the strings on the stack
-  for (int i = counter; i >= 0; --i) {
+    // put word_align 0s on the stack
+    for (int i = 0; i < word_align; ++i) {
+      esp = (void**)((char*)*esp - 1);
+      *esp = 0;
+    }
+
+    // put the pointers to the strings on the stack
+    for (int i = current_command->counter; i >= 0; --i) {
+      esp = (void**)((char*)esp - 8);
+      *esp = current_command->parsed_array[i];
+    }
+
+    // put the metadata (argv pointer, argc, and the return address) on the
+    // stack
     esp = (void**)((char*)esp - 8);
-    *esp = parsed_array[i];
+    *esp = &current_command->parsed_array[0];
+    esp = (void**)((char*)esp - 4);
+    *esp = current_command->counter;
+    esp = (void**)((char*)esp - 8);
+    *esp = 0;
+
+    return success;
+  } else {
+    perror("palloc failed");
+    return TID_ERROR;
   }
-
-  // put the metadata (argv pointer, argc, and the return address) on the stack
-  esp = (void**)((char*)esp - 8);
-  *esp = &parsed_array[0];
-  esp = (void**)((char*)esp - 4);
-  *esp = counter;
-  esp = (void**)((char*)esp - 8);
-  *esp = 0;
-
-  return success;
 }
 
 /**
  * Calculates total length of arguments in an array (excluding the bytes of
  * word_align for 16B alignment.)
  */
-int get_total_size() {
-  char* temp = parsed_array[0];
+int get_total_size(Command* current_command) {
+  char* temp = current_command->parsed_array[0];
   size_t sum = 0;
 
   while (temp != NULL) {
     sum += strlen(temp) + 1 + 8;
   }
   sum += 28;
+  return sum;
 }
 
 /* Adds a mapping from user virtual address UPAGE to kernel

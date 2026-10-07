@@ -11,4 +11,12 @@ void process_activate(void);
 /* MACROS */
 #define MAX_ARGS_PER_COMMAND 256
 
+/* Global struct: Parsed array of arguments to be passed between process_execute
+ * and setup_stack. */
+typedef struct Command {
+  char* file_name;
+  char* parsed_array[MAX_ARGS_PER_COMMAND + 1];
+  int counter;
+} Command;
+
 #endif /* userprog/process.h */

@@ -40,35 +40,43 @@ tid_t process_execute(const char* file_name) {
   strlcpy(fn_copy, file_name, PGSIZE);
 
   /* Create our command struct. */
-  Command* current_command = malloc(sizeof(current_command));
+  Command* current_command = malloc(sizeof(Command)); //changed malloc to right thing
+  if(current_command == NULL){
+    palloc_free_page(fn_copy);
+    return TID_ERROR;
+  }
+  current_command->fn_copy = fn_copy;
+  current_command->counter = 0;
 
   /* Parse FILE_NAME to get the file name and arguments. */
   char* savepos;
   char* first = strtok_r(fn_copy, " ", &savepos);
   char* temp = first;
-  current_command->parsed_array[0] = temp;
-  ++current_command->counter;
+  //current_command->parsed_array[0] = temp;
+  //++current_command->counter;
   current_command->file_name = first;
 
   while (temp != NULL) {
+    current_command->parsed_array[current_command->counter++] = temp;
     temp = strtok_r(NULL, " ", &savepos);
-    current_command->parsed_array[current_command->counter] = temp;
-    ++current_command->counter;
   }
   current_command->parsed_array[current_command->counter] = NULL;
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create(current_command->file_name, PRI_DEFAULT, start_process,
-                      fn_copy);
-  if (tid == TID_ERROR) palloc_free_page(fn_copy);
+                      current_command); //pass the command as it expects one
+  if (tid == TID_ERROR) {
+    palloc_free_page(fn_copy);
   free(current_command);
+}
   return tid;
 }
 
 /* A thread function that loads a user process and starts it
    running. */
 static void start_process(void* current_command) {
-  char* file_name = ((Command*)(current_command))->file_name;
+  Command *cur_command = current_command;
+  char* file_name = cur_command->file_name;
   struct intr_frame if_;
   bool success;
 
@@ -80,7 +88,7 @@ static void start_process(void* current_command) {
   success = load(file_name, &if_.eip, &if_.esp, current_command);
 
   /* If load failed, quit. */
-  palloc_free_page(file_name);
+  palloc_free_page(cur_command->fn_copy); //must free the page not the file_name which only contains the first word
   if (!success) thread_exit();
 
   /* Start the user process by simulating a return from an
@@ -419,39 +427,42 @@ static bool setup_stack(void** esp, Command* current_command) {
     total_size += word_align;
 
     // put the strings on the stack
-    for (int i = 0; i < current_command->counter; ++i) {
+    for (int i = current_command->counter-1; i>=0; --i) {
       int length =
-          strlen(current_command->parsed_array[current_command->counter]) + 1;
-      *esp = (void**)((char*)esp - length);
-      strlcpy(*esp, current_command->parsed_array[current_command->counter],
+          strlen(current_command->parsed_array[i]) + 1;
+      *esp = (char*)*esp - length;
+      strlcpy(*esp, current_command->parsed_array[i],
               length);
+      current_command->parsed_array[i] = *esp;
     }
 
     // put word_align 0s on the stack
     for (int i = 0; i < word_align; ++i) {
-      esp = (void**)((char*)*esp - 1);
-      *esp = 0;
+      *esp = (char*)*esp - 1;
+      *(char*)*esp = 0;
     }
 
     // put the pointers to the strings on the stack
     for (int i = current_command->counter; i >= 0; --i) {
-      esp = (void**)((char*)esp - 8);
-      *esp = current_command->parsed_array[i];
+      *esp = (char*)*esp - 8;
+      *(char**)*esp = current_command->parsed_array[i];
     }
 
     // put the metadata (argv pointer, argc, and the return address) on the
     // stack
-    esp = (void**)((char*)esp - 8);
-    *esp = &current_command->parsed_array[0];
-    esp = (void**)((char*)esp - 4);
-    *esp = current_command->counter;
-    esp = (void**)((char*)esp - 8);
-    *esp = 0;
+    *esp = (char*)*esp - 8;
+    *(char***)*esp = &current_command->parsed_array[0];
+    *esp =(char*)*esp - 4;
+    *(int*)*esp = current_command->counter;
+    *esp = (char*)*esp - 8;
+    *(int*)*esp = 0;
+
+    hex_dump((uintptr_t)*esp,*esp,(char*)PHYS_BASE-(char*)*esp,true);
 
     return success;
-  } else {
-    perror("palloc failed");
-    return TID_ERROR;
+  } 
+  else {
+    return false;
   }
 }
 
@@ -461,10 +472,12 @@ static bool setup_stack(void** esp, Command* current_command) {
  */
 int get_total_size(Command* current_command) {
   char* temp = current_command->parsed_array[0];
+  int i = 0;
   size_t sum = 0;
 
   while (temp != NULL) {
     sum += strlen(temp) + 1 + 8;
+    temp = current_command->parsed_array[++i];
   }
   sum += 28;
   return sum;

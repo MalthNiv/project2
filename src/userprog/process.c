@@ -450,8 +450,9 @@ static bool setup_stack(void** esp, Command* current_command) {
 
     // put the metadata (argv pointer, argc, and the return address) on the
     // stack
+    char** argv_addr = *esp;
     *esp = (char*)*esp - 8;
-    *(char***)*esp = &current_command->parsed_array[0];
+    *(char***)*esp = argv_addr;
     *esp =(char*)*esp - 4;
     *(int*)*esp = current_command->counter;
     *esp = (char*)*esp - 8;

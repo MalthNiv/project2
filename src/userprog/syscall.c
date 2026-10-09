@@ -4,15 +4,110 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
-static void syscall_handler (struct intr_frame *);
+static void syscall_handler(struct intr_frame *);
 
-void syscall_init (void)
+void syscall_init(void)
 {
-  intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
+  intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
-static void syscall_handler (struct intr_frame *f UNUSED)
+static void syscall_handler(struct intr_frame *f UNUSED)
 {
-  printf ("system call!\n");
-  thread_exit ();
+  int sys_num = *((int*)f->esp);
+  f->esp = (char*)f->esp + 4;
+
+  switch (sys_num) {
+    case 0:
+      handle_halt(f);
+      break;
+    case 1:
+      handle_exit(f);
+      break;
+    case 2:
+      handle_exec(f);
+      break;
+    case 3:
+      handle_wait(f);
+      break;
+    case 4:
+      handle_create(f);
+      break;
+    case 5:
+      handle_remove(f);
+      break;
+    case 6:
+      handle_open(f);
+      break;
+    case 7:
+      handle_filesize(f);
+      break;
+    case 8:
+      handle_read(f);
+      break;
+    case 9:
+      handle_write(f);
+      break;
+    case 10:
+      handle_seek(f);
+      break;
+    case 11:
+      handle_tell(f);
+      break;
+    case 12:
+      handle_close(f);
+      break;
+  }
+  
+}
+
+void handle_halt(struct intr_frame *f) {
+  return;
+}
+
+void handle_exit(struct intr_frame *f) {
+  return;
+}
+
+void handle_exec(struct intr_frame *f) {
+  return;
+}
+
+void handle_wait(struct intr_frame *f) {
+  return;
+}
+
+void handle_create(struct intr_frame *f) {
+  return;
+}
+
+void handle_remove(struct intr_frame *f) {
+  return;
+}
+
+void handle_open(struct intr_frame *f) {
+  return;
+}
+
+void handle_filesize(struct intr_frame *f) {
+  return;
+}
+
+void handle_read(struct intr_frame *f) {
+  return;
+}
+
+void handle_write(struct intr_frame *f) {
+  return;
+}
+
+void handle_seek(struct intr_frame *f) {
+  return;
+}
+
+void handle_tell(struct intr_frame *f) {
+  return;
+}
+
+void handle_close(struct intr_frame *f) {
+  return;
 }

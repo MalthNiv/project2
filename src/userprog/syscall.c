@@ -61,11 +61,13 @@ static void syscall_handler(struct intr_frame *f UNUSED)
 }
 
 void handle_halt(struct intr_frame *f) {
-  return;
+  shutdown_power_off();
 }
 
 void handle_exit(struct intr_frame *f) {
-  return;
+  uint32_t status = *((int*)f->esp);
+  f->eax = status; 
+  thread_exit(); 
 }
 
 void handle_exec(struct intr_frame *f) {
@@ -77,7 +79,13 @@ void handle_wait(struct intr_frame *f) {
 }
 
 void handle_create(struct intr_frame *f) {
-  return;
+  char* file_name = *((char*)f->esp);
+  f->esp = (char*)f->esp + 4;
+  uint32_t size = *((int*)f->esp);
+
+  if(!filesys_create(file_name, size)) {
+    thread_exit();
+  }
 }
 
 void handle_remove(struct intr_frame *f) {

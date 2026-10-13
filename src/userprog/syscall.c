@@ -4,10 +4,12 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "devices/shutdown.h"
+#include "devices/input.h"
 #include "filesys/filesys.h"
+#include "filesys/file.h"
 
 static void syscall_handler(struct intr_frame *);
-void handle_halt(struct intr_frame *f);
+void handle_halt(void);
 void handle_exit(struct intr_frame *f);
 void handle_exec(struct intr_frame *f);
 void handle_wait(struct intr_frame *f);
@@ -34,7 +36,7 @@ static void syscall_handler(struct intr_frame *f UNUSED)
   switch (sys_num)
   {
   case 0:
-    handle_halt(f);
+    handle_halt();
     break;
   case 1:
     handle_exit(f);
@@ -75,7 +77,7 @@ static void syscall_handler(struct intr_frame *f UNUSED)
   }
 }
 
-void handle_halt(struct intr_frame *f)
+void handle_halt(void)
 {
   shutdown_power_off();
 }
@@ -116,17 +118,60 @@ void handle_remove(struct intr_frame *f)
 
 void handle_open(struct intr_frame *f)
 {
-  return;
+  char *file_name = ((char *)f->esp);
+
+  struct file *file = filesys_open(file_name);
+  struct thread *cur = thread_current();
+  if (!file || cur->open_spot == 128)
+  {
+    f->eax = -1;
+  }
+  else
+  {
+    cur->fd_table[cur->open_spot] = file;
+    f->eax = cur->open_spot + 2;
+
+    if (cur->open_spot == cur->open_end)
+    {
+      cur->open_end++;
+    }
+    cur->open_spot = cur->open_end;
+  }
 }
 
 void handle_filesize(struct intr_frame *f)
 {
-  return;
+  int fd = *((int *)f->esp);
+  struct thread *cur = thread_current();
+
+  f->eax = file_length(cur->fd_table[fd - 2]);
 }
 
 void handle_read(struct intr_frame *f)
 {
-  return;
+  // Get the syscall args
+  int fd = *((int *)f->esp);
+  f->esp = (char *)f->esp + 4;
+
+  uint8_t *buffer = ((uint8_t *)f->esp);
+  f->esp = (char *)f->esp + 4;
+
+  unsigned size = *((int32_t *)f->esp);
+
+  // Reading input
+  if (fd == 0)
+  {
+    for (unsigned i = 0; i < size; i++)
+    {
+      buffer[i] = input_getc();
+    }
+    f->eax = size;
+  }
+  else
+  {
+    struct thread *cur = thread_current();
+    f->eax = file_read(cur->fd_table[fd - 2], buffer, size);
+  }
 }
 
 void handle_write(struct intr_frame *f)
@@ -143,6 +188,7 @@ void handle_write(struct intr_frame *f)
   // Handle writing to console
   if (fd == 1)
   {
+    unsigned original = size;
     while (size > 300) // split into chunks of 300 as per method details
     {
       putbuf((char *)buffer, 300);
@@ -151,23 +197,40 @@ void handle_write(struct intr_frame *f)
     }
 
     putbuf((char *)buffer, size);
+    f->eax = original;
   }
-
-  // Writing to other files
-  return;
+  else
+  {
+    struct thread *cur = thread_current();
+    f->eax = file_write(cur->fd_table[fd - 2], buffer, size);
+  }
 }
 
 void handle_seek(struct intr_frame *f)
 {
-  return;
+  int fd = *((int *)f->esp);
+  f->esp = (char *)f->esp + 4;
+  unsigned pos = *((unsigned *)f->esp);
+
+  struct thread *cur = thread_current();
+  file_seek(cur->fd_table[fd - 2], pos);
 }
 
 void handle_tell(struct intr_frame *f)
 {
-  return;
+  int fd = *((int *)f->esp);
+  struct thread *cur = thread_current();
+
+  off_t res = file_tell(cur->fd_table[fd - 2]);
+  f->eax = res;
 }
 
 void handle_close(struct intr_frame *f)
 {
-  return;
+  int fd = *((int *)f->esp);
+  struct thread *cur = thread_current();
+
+  file_close(cur->fd_table[fd - 2]);
+  cur->fd_table[fd - 2] = NULL;
+  cur->open_spot = fd - 2;
 }

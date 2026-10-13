@@ -119,8 +119,8 @@ static void start_process(void *current_command)
    does nothing. */
 int process_wait(tid_t child_tid UNUSED)
 {
-  while (1)
-    ;
+  struct thread *cur = thread_current();
+  
 }
 
 /* Free the current process's resources. */
@@ -511,14 +511,10 @@ static bool setup_stack(void **esp, Command *current_command)
     *esp = (char *)*esp - 4;
     *(int *)*esp = 0;
 
-    hex_dump((uintptr_t)*esp, *esp, (char *)PHYS_BASE - (char *)*esp, true);
+    // hex_dump((uintptr_t)*esp, *esp, (char *)PHYS_BASE - (char *)*esp, true);
+  }
 
-    return success;
-  }
-  else
-  {
-    return false;
-  }
+  return success;
 }
 
 /**

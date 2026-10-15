@@ -24,6 +24,8 @@ struct status_of_child{
  struct semaphore parent;
  int count;
  struct list_elem elem;
+ struct semaphore loaded;
+ bool load;
 };
 /* Global struct: Parsed array of arguments to be passed between process_execute
 * and setup_stack. */

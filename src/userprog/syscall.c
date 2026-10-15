@@ -13,6 +13,8 @@
 #include "userprog/pagedir.h"
 #include "userprog/process.h"
 
+struct lock lock_file;
+
 static void syscall_handler(struct intr_frame*);
 void bad_exit(struct intr_frame* f);
 void handle_halt(void);
@@ -31,7 +33,9 @@ void handle_close(struct intr_frame* f);
 
 int global_fd[128][2];
 
+
 void syscall_init(void) {
+  lock_init(&lock_file);
   intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
@@ -121,7 +125,27 @@ void handle_exit(struct intr_frame* f) {
   thread_exit();
 }
 
-void handle_exec(struct intr_frame* f) { return; }
+void handle_exec(struct intr_frame* f) {
+  uint32_t *p = thread_current()->pagedir;
+  char* esp = (char*)f->esp + 4;
+  if(is_kernel_vaddr(esp+3)||!pagedir_get_page(p,esp)||!pagedir_get_page(p,esp+3)){
+    bad_exit(f);
+  }
+  char *cmd_line = *((char**)esp);
+  char *byte = cmd_line;
+
+  if(!byte||is_kernel_vaddr(byte)||!pagedir_get_page(p,byte)){
+    bad_exit(f);
+  }
+
+  while(*byte!='\0'){
+    byte++;
+    if(is_kernel_vaddr(byte)||!pagedir_get_page(p,byte)){
+    bad_exit(f);
+  }
+  }
+  f->eax = process_execute(cmd_line);
+}
 
 void handle_wait(struct intr_frame* f) {
   char* esp = (char*)f->esp + 4;

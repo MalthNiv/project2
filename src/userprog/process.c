@@ -100,7 +100,7 @@ static void start_process(void *current_command)
 {
   Command *cur_command = current_command;
   char *file_name = cur_command->file_name;
-  thread_current()->my_status = cur_command->child_status;
+  thread_current()->my_status = cur_command->child_status; // added by us
   struct intr_frame if_;
   bool success;
 
@@ -141,6 +141,7 @@ int process_wait(tid_t child_tid UNUSED)
 {
   struct list *children = &thread_current()->children_held;
   struct list_elem *elm;
+
   for (elm = list_begin(children); elm != list_end(children); elm = list_next(elm))
   {
     struct status_of_child *child = list_entry(elm, struct status_of_child, elem);
@@ -148,6 +149,7 @@ int process_wait(tid_t child_tid UNUSED)
     {
       list_remove(elm);
       sema_down(&child->parent);
+
       int status = child->exit_status;
       child->count--;
       if (child->count == 0)
@@ -165,26 +167,26 @@ void process_exit(void)
 {
   struct thread *cur = thread_current();
   uint32_t *pd;
-  while (!list_empty(&cur->children_held)){
-    struct list_elem* elm = list_pop_front(&cur->children_held);
+  while (!list_empty(&cur->children_held))
+  {
+    struct list_elem *elm = list_pop_front(&cur->children_held);
     struct status_of_child *child = list_entry(elm, struct status_of_child, elem);
     child->count--;
-      if (child->count == 0)
-      {
-        free(child);
-      }
+    if (child->count == 0)
+    {
+      free(child);
+    }
   }
-  if(cur->my_status!=NULL){
+  if (cur->my_status != NULL)
+  {
     sema_up(&cur->my_status->parent);
     cur->my_status->count--;
-    if(cur->my_status->count==0){
+    if (cur->my_status->count == 0)
+    {
       free(cur->my_status);
     }
     cur->my_status = NULL;
-
   }
-
-  
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */

@@ -15,6 +15,7 @@
 
 static void syscall_handler(struct intr_frame *);
 void check_addr(void *addr, struct intr_frame *f);
+void bad_exit(struct intr_frame *f);
 void handle_halt(void);
 void handle_exit(struct intr_frame *f);
 void handle_exec(struct intr_frame *f);
@@ -103,10 +104,15 @@ void check_addr(void *addr, struct intr_frame *f)
 {
   if (!addr || is_kernel_vaddr(addr) || !pagedir_get_page(thread_current()->pagedir, addr))
   {
-    f->eax = -1;
-    printf("%s: exit(%d)\n", thread_current()->name, -1);
-    thread_exit();
+    bad_exit(f);
   }
+}
+
+void bad_exit(struct intr_frame *f)
+{
+  f->eax = -1;
+  printf("%s: exit(%d)\n", thread_current()->name, -1);
+  thread_exit();
 }
 
 void handle_halt(void) { shutdown_power_off(); }
@@ -169,6 +175,8 @@ void handle_open(struct intr_frame *f)
 {
   char *esp = (char *)f->esp + 4;
   char *file_name = *((char **)esp);
+  check_addr(file_name, f);
+
   struct file *file = filesys_open(file_name);
   struct thread *cur = thread_current();
   if (!file || cur->open_spot == 128)
@@ -222,6 +230,7 @@ void handle_read(struct intr_frame *f)
   else
   {
     struct thread *cur = thread_current();
+
     f->eax = file_read(cur->fd_table[fd - 2], buffer, size);
   }
 }
@@ -254,6 +263,7 @@ void handle_write(struct intr_frame *f)
   else
   {
     struct thread *cur = thread_current();
+
     f->eax = file_write(cur->fd_table[fd - 2], buffer, size);
   }
 }
@@ -266,6 +276,7 @@ void handle_seek(struct intr_frame *f)
   unsigned pos = *((unsigned *)esp);
 
   struct thread *cur = thread_current();
+
   file_seek(cur->fd_table[fd - 2], pos);
 }
 
@@ -284,6 +295,11 @@ void handle_close(struct intr_frame *f)
   char *esp = (char *)f->esp + 4;
   int fd = *((int *)esp);
   struct thread *cur = thread_current();
+
+  if (fd < 0 || fd >= 130 || !cur->fd_table[fd - 2])
+  {
+    bad_exit(f);
+  }
 
   file_close(cur->fd_table[fd - 2]);
   cur->fd_table[fd - 2] = NULL;

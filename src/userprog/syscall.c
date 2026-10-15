@@ -234,7 +234,7 @@ void handle_seek(struct intr_frame *f)
   char *esp = (char*)f->esp + 4;
   int fd = *((int *)esp);
   esp+=4;
-  unsigned pos = *((unsigned *)f->esp);
+  unsigned pos = *((unsigned *)esp);
 
   struct thread *cur = thread_current();
   file_seek(cur->fd_table[fd - 2], pos);

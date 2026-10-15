@@ -9,10 +9,12 @@
 #include "filesys/filesys.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
+#include "userprog/pagedir.h"
 #include "userprog/process.h"
 
 static void syscall_handler(struct intr_frame*);
-
+void bad_exit(struct intr_frame* f);
 void handle_halt(void);
 void handle_exit(struct intr_frame* f);
 void handle_exec(struct intr_frame* f);
@@ -34,13 +36,16 @@ void syscall_init(void) {
 }
 
 static void syscall_handler(struct intr_frame* f UNUSED) {
-  int sys_num = *((int*)f->esp);
-  // f->esp = (char *)f->esp + 4;
+  if (!f->esp || is_kernel_vaddr(f->esp) ||
+      !pagedir_get_page(thread_current()->pagedir, f->esp)) {
+    bad_exit(f);
+  }
 
-  // printf("enter esp=%p\n",f->esp);
+  int sys_num = *((int*)f->esp);
+  // printf("%d", sys_num);
 
   switch (sys_num) {
-    case 0:
+    case SYS_HALT:
       handle_halt();
       //  printf("leave esp=%p\n",f->esp);
       break;
@@ -77,8 +82,8 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
       //  printf("leave esp=%p\n",f->esp);
       break;
     case 9:
+      // printf("I went in here oops");
       handle_write(f);
-      //  printf("leave esp=%p\n",f->esp);
       break;
     case 10:
       handle_seek(f);
@@ -92,7 +97,15 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
       handle_close(f);
       // printf("leave esp=%p\n",f->esp);
       break;
+    default:
+      bad_exit(f);
   }
+}
+
+void bad_exit(struct intr_frame* f) {
+  f->eax = -1;
+  printf("%s: exit(%d)\n", thread_current()->name, -1);
+  thread_exit();
 }
 
 void handle_halt(void) { shutdown_power_off(); }

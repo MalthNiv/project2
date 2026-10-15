@@ -61,12 +61,17 @@ tid_t process_execute(const char *file_name)
   //++current_command->counter;
   current_command->file_name = first;
 
-  while (temp != NULL)
+  while (temp != NULL&&current_command->counter<MAX_ARGS_PER_COMMAND)
   {
     current_command->parsed_array[current_command->counter++] = temp;
     temp = strtok_r(NULL, " ", &savepos);
   }
   current_command->parsed_array[current_command->counter] = NULL;
+  if(current_command->counter == 0){
+    palloc_free_page(fn_copy);
+    free(current_command);
+    return TID_ERROR;
+  }
 
   // set child struct up
   struct status_of_child *status = malloc(sizeof(struct status_of_child));
@@ -78,10 +83,12 @@ tid_t process_execute(const char *file_name)
   }
   status->exit_status = -1;
   status->count = 2;
+  lock_init(&status->lock_count);
   sema_init(&status->parent, 0);
   current_command->child_status = status;
    status->load = false;
   sema_init(&status->loaded,0);
+  
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create(current_command->file_name, PRI_DEFAULT, start_process,
@@ -98,8 +105,11 @@ tid_t process_execute(const char *file_name)
   sema_down(&status->loaded);
 
   if(!status->load){
+    lock_acquire(&status->lock_count);
     status->count--;
-    if(status->count==0){
+    bool counter = status->count==0;
+    lock_release(&status->lock_count);
+    if(counter){
       free(status);
     }
     return TID_ERROR;
@@ -154,7 +164,7 @@ static void start_process(void *current_command)
 
   This function will be implemented in problem 2-2.  For now, it
   does nothing. */
-int process_wait(tid_t child_tid UNUSED)
+int process_wait(tid_t child_tid)
 {
   struct list *children = &thread_current()->children_held;
   struct list_elem *elm;
@@ -166,8 +176,11 @@ int process_wait(tid_t child_tid UNUSED)
       list_remove(elm);
       sema_down(&child->parent);
       int status = child->exit_status;
+      lock_acquire(&child->lock_count);
       child->count--;
-      if (child->count == 0)
+      bool counter = child->count == 0;
+      lock_release(&child->lock_count);
+      if (counter)
       {
         free(child);
       }
@@ -185,16 +198,22 @@ void process_exit(void)
   while (!list_empty(&cur->children_held)){
     struct list_elem* elm = list_pop_front(&cur->children_held);
     struct status_of_child *child = list_entry(elm, struct status_of_child, elem);
-    child->count--;
-      if (child->count == 0)
+    lock_acquire(&child->lock_count);
+      child->count--;
+      bool counter = child->count == 0;
+      lock_release(&child->lock_count);
+      if (counter)
       {
         free(child);
       }
   }
   if(cur->my_status!=NULL){
     sema_up(&cur->my_status->parent);
+    lock_acquire(&cur->my_status->lock_count);
     cur->my_status->count--;
-    if(cur->my_status->count==0){
+    bool counter = cur->my_status->count==0;
+    lock_release(&cur->my_status->lock_count);
+    if(counter){
       free(cur->my_status);
     }
     cur->my_status = NULL;
@@ -552,6 +571,9 @@ static bool setup_stack(void **esp, Command *current_command)
     while ((total_size + word_align) % 4 != 0)
     {
       word_align++;
+    }
+    if(total_size+word_align>PGSIZE){
+      return false;
     }
 
     // put the strings on the stack

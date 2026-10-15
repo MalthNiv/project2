@@ -200,17 +200,23 @@ void handle_read(struct intr_frame* f) {
   uint8_t* buffer = *((uint8_t**)esp);
   check_addr(buffer, f);
   esp += 4;
-
   unsigned size = *((unsigned*)esp);
+  check_addr(buffer, f);
 
   // Reading input
-  if (fd == 0) {
+  if (fd == 1) {
+    bad_exit(f);
+  } else if (fd == 0) {
     for (unsigned i = 0; i < size; i++) {
       buffer[i] = input_getc();
     }
     f->eax = size;
   } else {
     struct thread* cur = thread_current();
+
+    if (fd < 0 || fd >= 130 || !cur->fd_table[fd - 2]) {
+      bad_exit(f);
+    }
 
     f->eax = file_read(cur->fd_table[fd - 2], buffer, size);
   }
@@ -225,6 +231,7 @@ void handle_write(struct intr_frame* f) {
   char* buffer = *((char**)esp);
   esp += 4;
   unsigned size = *((unsigned*)esp);
+  check_addr(buffer, f);
 
   // Handle writing to console
   if (fd == 1) {

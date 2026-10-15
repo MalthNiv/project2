@@ -11,6 +11,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "filesys/file.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -442,6 +443,7 @@ static void init_thread(struct thread *t, const char *name, int priority)
   t->open_spot = 0;
   t->open_end = 0;
   list_init(&t->children_held);
+  t->running_file = NULL;
 
   for (int i = 0; i < 128; i++)
   {

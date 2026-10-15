@@ -106,7 +106,7 @@ struct thread {
  int open_spot; // added by us
  int open_end; // added by us
  struct file* fd_table[128]; // added by us
-
+ struct file* running_file; // added by us
 
  /* Shared between thread.c and synch.c. */
  struct list_elem elem; /* List element. */

@@ -123,6 +123,8 @@ void handle_halt(void) { shutdown_power_off(); }
 
 void handle_exit(struct intr_frame* f) {
   char* esp = (char*)f->esp + 4;
+  check_addr(esp,f);
+  check_addr(esp+3,f);
   int status = *((int*)esp);
   struct thread* cur = thread_current();
   if (cur->my_status != NULL) {
@@ -135,39 +137,47 @@ void handle_exit(struct intr_frame* f) {
 void handle_exec(struct intr_frame* f) {
   uint32_t* p = thread_current()->pagedir;
   char* esp = (char*)f->esp + 4;
-  if (is_kernel_vaddr(esp + 3) || !pagedir_get_page(p, esp) ||
-      !pagedir_get_page(p, esp + 3)) {
-    bad_exit(f);
-  }
+  check_addr(esp,f);
+  check_addr(esp+3,f);
   char* cmd_line = *((char**)esp);
   char* byte = cmd_line;
 
-  if (!byte || is_kernel_vaddr(byte) || !pagedir_get_page(p, byte)) {
-    bad_exit(f);
-  }
+  check_addr(byte,f);
 
   while (*byte != '\0') {
     byte++;
-    if (is_kernel_vaddr(byte) || !pagedir_get_page(p, byte)) {
-      bad_exit(f);
-    }
+    check_addr(byte,f);
   }
   f->eax = process_execute(cmd_line);
 }
 
 void handle_wait(struct intr_frame* f) {
   char* esp = (char*)f->esp + 4;
+  check_addr(esp,f);
+  check_addr(esp+3,f);
   tid_t pid = *((tid_t*)esp);
   f->eax = process_wait(pid);
 }
 
 void handle_create(struct intr_frame* f) {
   char* esp = (char*)f->esp + 4;
+  check_addr(esp,f);
+  check_addr(esp+3,f);
   char* file_name = *((char**)esp);
   check_addr(file_name, f);
   esp += 4;
+  check_addr(esp,f);
+  check_addr(esp+3,f);
   unsigned size = *((unsigned*)esp);
+  char* byte = file_name;
+  check_addr(byte,f);
+  while (*byte != '\0') {
+    byte++;
+    check_addr(byte,f);
+  }
+  lock_acquire(&lock_file);
   f->eax = filesys_create(file_name, size);
+  lock_release(&lock_file);
 }
 
 void handle_remove(struct intr_frame* f) {
@@ -191,15 +201,33 @@ void handle_remove(struct intr_frame* f) {
 
 void handle_open(struct intr_frame* f) {
   char* esp = (char*)f->esp + 4;
-  char* file_name = *((char**)esp);
-  check_addr(file_name, f);
-
-  struct file* file = filesys_open(file_name);
   struct thread* cur = thread_current();
-  if (!file || cur->open_spot == 128) {
+  check_addr(esp,f);
+  check_addr(esp+3,f);
+  char* file_name = *((char**)esp);
+
+  char* byte = file_name;
+  check_addr(byte,f);
+  while (*byte != '\0') {
+    byte++;
+    check_addr(byte,f);
+  }
+  lock_acquire(&lock_file);
+  struct file* file = filesys_open(file_name);
+  lock_release(&lock_file);
+
+  if (!file) {
     f->eax = -1;
     return;
-  } else {
+  } 
+  if(cur->open_spot==128){
+    lock_acquire(&lock_file);
+    file_close(file);
+    lock_release(&lock_file);
+    f->eax = -1;
+    return;
+  }
+  
     cur->fd_table[cur->open_spot] = file;
     f->eax = cur->open_spot + 2;
 
@@ -208,61 +236,82 @@ void handle_open(struct intr_frame* f) {
     }
     ++global_fd[cur->open_spot][1];
     cur->open_spot = cur->open_end;
-  }
+  
 }
 
 void handle_filesize(struct intr_frame* f) {
   char* esp = (char*)f->esp + 4;
+  check_addr(esp,f);
+  check_addr(esp+3,f);
   int fd = *((int*)esp);
   struct thread* cur = thread_current();
 
+  if(fd<2||fd>=130||cur->fd_table[fd-2]==NULL){
+    f->eax=-1;
+    return;
+  }
+  lock_acquire(&lock_file);
   f->eax = file_length(cur->fd_table[fd - 2]);
+  lock_release(&lock_file);
 }
 
 void handle_read(struct intr_frame* f) {
   // Get the syscall args
+  struct thread* cur = thread_current();
   char* esp = (char*)f->esp + 4;
+  check_addr(esp,f);
+  check_addr(esp+3,f);
   int fd = *((int*)esp);
   esp += 4;
+  check_addr(esp,f);
+  check_addr(esp+3,f);
   uint8_t* buffer = *((uint8_t**)esp);
   esp += 4;
+  check_addr(esp,f);
+  check_addr(esp+3,f);
   unsigned size = *((unsigned*)esp);
   check_addr((void*)buffer, f);
 
   // Reading input
-  if (fd == 1) {
-    bad_exit(f);
-  } else if (fd == 0) {
+  if (fd == 0) {
     for (unsigned i = 0; i < size; i++) {
       buffer[i] = input_getc();
     }
     f->eax = size;
-  } else {
-    struct thread* cur = thread_current();
+    return;
+  } 
 
-    if (fd < 0 || fd >= 130 || !cur->fd_table[fd - 2]) {
-      bad_exit(f);
-    }
-
-    f->eax = file_read(cur->fd_table[fd - 2], buffer, size);
+  if(fd<2||fd>=130||cur->fd_table[fd-2]==NULL){
+    f->eax=-1;
+    return;
   }
+
+    lock_acquire(&lock_file);
+    f->eax = file_read(cur->fd_table[fd - 2], buffer, size);
+    lock_release(&lock_file);
+  
 }
 
 void handle_write(struct intr_frame* f) {
   // Get the syscall args
   char* esp = (char*)f->esp + 4;
+  check_addr(esp,f);
+  check_addr(esp+3,f);
   int fd = *((int*)esp);
   esp += 4;
+  check_addr(esp,f);
+  check_addr(esp+3,f);
 
   char* buffer = *((char**)esp);
   esp += 4;
+  check_addr(esp,f);
+  check_addr(esp+3,f);
+  struct thread* cur = thread_current();
   unsigned size = *((unsigned*)esp);
   check_addr(buffer, f);
 
   // Handle writing to console
-  if (fd == 0) {
-    bad_exit(f);
-  } else if (fd == 1) {
+  if (fd == 1) {
     unsigned original = size;
     while (size > 300)  // split into chunks of 300 as per method details
     {
@@ -270,51 +319,70 @@ void handle_write(struct intr_frame* f) {
       size -= 300;
       buffer += 300;
     }
-
-    putbuf((char*)buffer, size);
+    putbuf(buffer, size);
     f->eax = original;
-  } else {
-    struct thread* cur = thread_current();
-
-    if (fd < 0 || fd >= 130 || !cur->fd_table[fd - 2]) {
-      bad_exit(f);
-    }
-
-    f->eax = file_write(cur->fd_table[fd - 2], buffer, size);
+    return;
+  } 
+  if (fd < 2 || fd >= 130 || cur->fd_table[fd - 2]==NULL) {
+     f->eax=-1;
+     return;
   }
+  lock_acquire(&lock_file);
+  f->eax = file_write(cur->fd_table[fd - 2], buffer, size);
+  lock_release(&lock_file);
+  
 }
 
 void handle_seek(struct intr_frame* f) {
   char* esp = (char*)f->esp + 4;
+  check_addr(esp,f);
+  check_addr(esp+3,f);
+  
   int fd = *((int*)esp);
   esp += 4;
+  check_addr(esp,f);
+  check_addr(esp+3,f);
   unsigned pos = *((unsigned*)esp);
 
   struct thread* cur = thread_current();
-
+  if (fd < 2 || fd >= 130 || cur->fd_table[fd - 2]==NULL) {
+     
+     return;
+  }
+  lock_acquire(&lock_file);
   file_seek(cur->fd_table[fd - 2], pos);
+  lock_release(&lock_file);
 }
 
 void handle_tell(struct intr_frame* f) {
   char* esp = (char*)f->esp + 4;
+  check_addr(esp,f);
+  check_addr(esp+3,f);
   int fd = *((int*)esp);
   struct thread* cur = thread_current();
-
+  if (fd < 2 || fd >= 130 || cur->fd_table[fd - 2]==NULL) {
+     f->eax=-1;
+     return;
+  }
+  lock_acquire(&lock_file);
   off_t res = file_tell(cur->fd_table[fd - 2]);
   f->eax = res;
+  lock_release(&lock_file);
 }
 
 void handle_close(struct intr_frame* f) {
   char* esp = (char*)f->esp + 4;
+  check_addr(esp,f);
+  check_addr(esp+3,f);
   int fd = *((int*)esp);
   struct thread* cur = thread_current();
 
-  if (fd < 0 || fd >= 130 || !cur->fd_table[fd - 2]) {
-    bad_exit(f);
+  if (fd < 2 || fd >= 130 || cur->fd_table[fd - 2]==NULL) {
+    return;
   }
-
+  lock_acquire(&lock_file);
   file_close(cur->fd_table[fd - 2]);
+  lock_release(&lock_file);
   cur->fd_table[fd - 2] = NULL;
-  --global_fd[fd - 2][1];
   cur->open_spot = fd - 2;
 }

@@ -2,9 +2,9 @@
 #define USERPROG_SYSCALL_H
 
 #include "threads/synch.h"
+#include "threads/interrupt.h"
 
 void syscall_init(void);
-struct intr_frame;
 void bad_exit(struct intr_frame* f);
 
 extern int global_fd[128][2];

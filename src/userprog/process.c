@@ -19,6 +19,8 @@
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
 #include "userprog/tss.h"
+#include "userprog/syscall.h"
+
 
 static thread_func start_process NO_RETURN;
 static bool load(const char *cmdline, void (**eip)(void), void **esp,
@@ -78,6 +80,8 @@ tid_t process_execute(const char *file_name)
   status->count = 2;
   sema_init(&status->parent, 0);
   current_command->child_status = status;
+   status->load = false;
+  sema_init(&status->loaded,0);
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create(current_command->file_name, PRI_DEFAULT, start_process,
@@ -87,6 +91,17 @@ tid_t process_execute(const char *file_name)
     palloc_free_page(fn_copy);
     free(current_command);
     free(status);
+    return TID_ERROR;
+  }
+
+ 
+  sema_down(&status->loaded);
+
+  if(!status->load){
+    status->count--;
+    if(status->count==0){
+      free(status);
+    }
     return TID_ERROR;
   }
   status->tid = tid;
@@ -114,6 +129,8 @@ static void start_process(void *current_command)
   /* If load failed, quit. */
   palloc_free_page(cur_command->fn_copy); // must free the page not the file_name which only contains the first word
   free(cur_command);
+  thread_current()->my_status->load = success;
+  sema_up(&thread_current()->my_status->loaded);
   if (!success)
     thread_exit();
 
@@ -300,7 +317,7 @@ bool load(const char *file_name, void (**eip)(void), void **esp,
   off_t file_ofs;
   bool success = false;
   int i;
-
+  lock_acquire(&lock_file);
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create();
   if (t->pagedir == NULL)
@@ -396,6 +413,7 @@ bool load(const char *file_name, void (**eip)(void), void **esp,
 done:
   /* We arrive here whether the load is successful or not. */
   file_close(file);
+  lock_release(&lock_file);
   return success;
 }
 

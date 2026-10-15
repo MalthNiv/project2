@@ -137,7 +137,6 @@ static void page_fault (struct intr_frame *f)
   /* Count page faults. */
   
   page_fault_cnt++;
-  //printf("count failures:%d",page_fault_cnt); //added by me
 
   /* Determine cause. */
   not_present = (f->error_code & PF_P) == 0;

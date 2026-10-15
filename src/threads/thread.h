@@ -115,17 +115,6 @@ struct thread {
  struct list children_held;
  struct status_of_child *my_status;
 
-
-// #ifdef USERPROG
-//  /* Owned by userprog/process.c. */
-//  uint32_t* pagedir; /* Page directory. */
-//  struct list children_held;
-//  struct status_of_child *my_status;
-
-
-// #endif
-
-
  /* Owned by thread.c. */
  unsigned magic; /* Detects stack overflow. */
 };

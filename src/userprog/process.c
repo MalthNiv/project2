@@ -21,7 +21,6 @@
 #include "userprog/tss.h"
 #include "userprog/syscall.h"
 
-
 static thread_func start_process NO_RETURN;
 static bool load(const char *cmdline, void (**eip)(void), void **esp,
                  Command *current_command);
@@ -57,17 +56,16 @@ tid_t process_execute(const char *file_name)
   char *savepos;
   char *first = strtok_r(fn_copy, " ", &savepos);
   char *temp = first;
-  // current_command->parsed_array[0] = temp;
-  //++current_command->counter;
   current_command->file_name = first;
 
-  while (temp != NULL&&current_command->counter<MAX_ARGS_PER_COMMAND)
+  while (temp != NULL && current_command->counter < MAX_ARGS_PER_COMMAND)
   {
     current_command->parsed_array[current_command->counter++] = temp;
     temp = strtok_r(NULL, " ", &savepos);
   }
   current_command->parsed_array[current_command->counter] = NULL;
-  if(current_command->counter == 0){
+  if (current_command->counter == 0)
+  {
     palloc_free_page(fn_copy);
     free(current_command);
     return TID_ERROR;
@@ -86,9 +84,8 @@ tid_t process_execute(const char *file_name)
   lock_init(&status->lock_count);
   sema_init(&status->parent, 0);
   current_command->child_status = status;
-   status->load = false;
-  sema_init(&status->loaded,0);
-  
+  status->load = false;
+  sema_init(&status->loaded, 0);
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create(current_command->file_name, PRI_DEFAULT, start_process,
@@ -101,15 +98,16 @@ tid_t process_execute(const char *file_name)
     return TID_ERROR;
   }
 
- 
   sema_down(&status->loaded);
 
-  if(!status->load){
+  if (!status->load)
+  {
     lock_acquire(&status->lock_count);
     status->count--;
-    bool counter = status->count==0;
+    bool counter = status->count == 0;
     lock_release(&status->lock_count);
-    if(counter){
+    if (counter)
+    {
       free(status);
     }
     return TID_ERROR;
@@ -195,31 +193,32 @@ void process_exit(void)
 {
   struct thread *cur = thread_current();
   uint32_t *pd;
-  while (!list_empty(&cur->children_held)){
-    struct list_elem* elm = list_pop_front(&cur->children_held);
+  while (!list_empty(&cur->children_held))
+  {
+    struct list_elem *elm = list_pop_front(&cur->children_held);
     struct status_of_child *child = list_entry(elm, struct status_of_child, elem);
     lock_acquire(&child->lock_count);
-      child->count--;
-      bool counter = child->count == 0;
-      lock_release(&child->lock_count);
-      if (counter)
-      {
-        free(child);
-      }
+    child->count--;
+    bool counter = child->count == 0;
+    lock_release(&child->lock_count);
+    if (counter)
+    {
+      free(child);
+    }
   }
-  if(cur->my_status!=NULL){
+  if (cur->my_status != NULL)
+  {
     sema_up(&cur->my_status->parent);
     lock_acquire(&cur->my_status->lock_count);
     cur->my_status->count--;
-    bool counter = cur->my_status->count==0;
+    bool counter = cur->my_status->count == 0;
     lock_release(&cur->my_status->lock_count);
-    if(counter){
+    if (counter)
+    {
       free(cur->my_status);
     }
     cur->my_status = NULL;
   }
-
-  
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -350,7 +349,6 @@ bool load(const char *file_name, void (**eip)(void), void **esp,
     printf("load: %s: open failed\n", file_name);
     goto done;
   }
-
   /* Read and verify executable header. */
   if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr ||
       memcmp(ehdr.e_ident, "\177ELF\1\1\1", 7) || ehdr.e_type != 2 ||
@@ -572,7 +570,8 @@ static bool setup_stack(void **esp, Command *current_command)
     {
       word_align++;
     }
-    if(total_size+word_align>PGSIZE){
+    if (total_size + word_align > PGSIZE)
+    {
       return false;
     }
 

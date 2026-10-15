@@ -26,9 +26,9 @@ static bool load(const char *cmdline, void (**eip)(void), void **esp,
 int get_total_size(Command *current_command); // self-added
 
 /* Starts a new thread running a user program loaded from
-   FILENAME.  The new thread may be scheduled (and may even exit)
-   before process_execute() returns.  Returns the new process's
-   thread id, or TID_ERROR if the thread cannot be created. */
+  FILENAME.  The new thread may be scheduled (and may even exit)
+  before process_execute() returns.  Returns the new process's
+  thread id, or TID_ERROR if the thread cannot be created. */
 tid_t process_execute(const char *file_name)
 {
   char *fn_copy;
@@ -66,6 +66,19 @@ tid_t process_execute(const char *file_name)
   }
   current_command->parsed_array[current_command->counter] = NULL;
 
+  // set child struct up
+  struct status_of_child *status = malloc(sizeof(struct status_of_child));
+  if (status == NULL)
+  {
+    palloc_free_page(fn_copy);
+    free(current_command);
+    return TID_ERROR;
+  }
+  status->exit_status = -1;
+  status->count = 2;
+  sema_init(&status->parent, 0);
+  current_command->child_status = status;
+
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create(current_command->file_name, PRI_DEFAULT, start_process,
                       current_command); // pass the command as it expects one
@@ -73,16 +86,21 @@ tid_t process_execute(const char *file_name)
   {
     palloc_free_page(fn_copy);
     free(current_command);
+    free(status);
+    return TID_ERROR;
   }
+  status->tid = tid;
+  list_push_back(&thread_current()->children_held, &status->elem);
   return tid;
 }
 
 /* A thread function that loads a user process and starts it
-   running. */
+  running. */
 static void start_process(void *current_command)
 {
   Command *cur_command = current_command;
   char *file_name = cur_command->file_name;
+  thread_current()->my_status = cur_command->child_status;
   struct intr_frame if_;
   bool success;
 
@@ -95,6 +113,7 @@ static void start_process(void *current_command)
 
   /* If load failed, quit. */
   palloc_free_page(cur_command->fn_copy); // must free the page not the file_name which only contains the first word
+  free(cur_command);
   if (!success)
     thread_exit();
 
@@ -109,18 +128,36 @@ static void start_process(void *current_command)
 }
 
 /* Waits for thread TID to die and returns its exit status.  If
-   it was terminated by the kernel (i.e. killed due to an
-   exception), returns -1.  If TID is invalid or if it was not a
-   child of the calling process, or if process_wait() has already
-   been successfully called for the given TID, returns -1
-   immediately, without waiting.
+  it was terminated by the kernel (i.e. killed due to an
+  exception), returns -1.  If TID is invalid or if it was not a
+  child of the calling process, or if process_wait() has already
+  been successfully called for the given TID, returns -1
+  immediately, without waiting.
 
-   This function will be implemented in problem 2-2.  For now, it
-   does nothing. */
+
+  This function will be implemented in problem 2-2.  For now, it
+  does nothing. */
 int process_wait(tid_t child_tid UNUSED)
 {
-  struct thread *cur = thread_current();
-  
+  struct list *children = &thread_current()->children_held;
+  struct list_elem *elm;
+  for (elm = list_begin(children); elm != list_end(children); elm = list_next(elm))
+  {
+    struct status_of_child *child = list_entry(elm, struct status_of_child, elem);
+    if (child->tid == child_tid)
+    {
+      list_remove(elm);
+      sema_down(&child->parent);
+      int status = child->exit_status;
+      child->count--;
+      if (child->count == 0)
+      {
+        free(child);
+      }
+      return status;
+    }
+  }
+  return -1;
 }
 
 /* Free the current process's resources. */
@@ -128,6 +165,26 @@ void process_exit(void)
 {
   struct thread *cur = thread_current();
   uint32_t *pd;
+  while (!list_empty(&cur->children_held)){
+    struct list_elem* elm = list_pop_front(&cur->children_held);
+    struct status_of_child *child = list_entry(elm, struct status_of_child, elem);
+    child->count--;
+      if (child->count == 0)
+      {
+        free(child);
+      }
+  }
+  if(cur->my_status!=NULL){
+    sema_up(&cur->my_status->parent);
+    cur->my_status->count--;
+    if(cur->my_status->count==0){
+      free(cur->my_status);
+    }
+    cur->my_status = NULL;
+
+  }
+
+  
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -148,8 +205,8 @@ void process_exit(void)
 }
 
 /* Sets up the CPU for running user code in the current
-   thread.
-   This function is called on every context switch. */
+  thread.
+  This function is called on every context switch. */
 void process_activate(void)
 {
   struct thread *t = thread_current();
@@ -163,7 +220,7 @@ void process_activate(void)
 }
 
 /* We load ELF binaries.  The following definitions are taken
-   from the ELF specification, [ELF1], more-or-less verbatim.  */
+  from the ELF specification, [ELF1], more-or-less verbatim.  */
 
 /* ELF types.  See [ELF1] 1-2. */
 typedef uint32_t Elf32_Word, Elf32_Addr, Elf32_Off;
@@ -176,7 +233,7 @@ typedef uint16_t Elf32_Half;
 #define PE32Hx PRIx16 /* Print Elf32_Half in hexadecimal. */
 
 /* Executable header.  See [ELF1] 1-4 to 1-8.
-   This appears at the very beginning of an ELF binary. */
+  This appears at the very beginning of an ELF binary. */
 struct Elf32_Ehdr
 {
   unsigned char e_ident[16];
@@ -196,8 +253,8 @@ struct Elf32_Ehdr
 };
 
 /* Program header.  See [ELF1] 2-2 to 2-4.
-   There are e_phnum of these, starting at file offset e_phoff
-   (see [ELF1] 1-6). */
+  There are e_phnum of these, starting at file offset e_phoff
+  (see [ELF1] 1-6). */
 struct Elf32_Phdr
 {
   Elf32_Word p_type;
@@ -232,9 +289,9 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
                          bool writable);
 
 /* Loads an ELF executable from FILE_NAME into the current thread.
-   Stores the executable's entry point into *EIP
-   and its initial stack pointer into *ESP.
-   Returns true if successful, false otherwise. */
+  Stores the executable's entry point into *EIP
+  and its initial stack pointer into *ESP.
+  Returns true if successful, false otherwise. */
 bool load(const char *file_name, void (**eip)(void), void **esp,
           Command *current_command)
 {
@@ -348,7 +405,7 @@ done:
 static bool install_page(void *upage, void *kpage, bool writable);
 
 /* Checks whether PHDR describes a valid, loadable segment in
-   FILE and returns true if so, false otherwise. */
+  FILE and returns true if so, false otherwise. */
 static bool validate_segment(const struct Elf32_Phdr *phdr, struct file *file)
 {
   /* p_offset and p_vaddr must have the same page offset. */
@@ -392,19 +449,23 @@ static bool validate_segment(const struct Elf32_Phdr *phdr, struct file *file)
 }
 
 /* Loads a segment starting at offset OFS in FILE at address
-   UPAGE.  In total, READ_BYTES + ZERO_BYTES bytes of virtual
-   memory are initialized, as follows:
+  UPAGE.  In total, READ_BYTES + ZERO_BYTES bytes of virtual
+  memory are initialized, as follows:
 
-        - READ_BYTES bytes at UPAGE must be read from FILE
-          starting at offset OFS.
 
-        - ZERO_BYTES bytes at UPAGE + READ_BYTES must be zeroed.
+       - READ_BYTES bytes at UPAGE must be read from FILE
+         starting at offset OFS.
 
-   The pages initialized by this function must be writable by the
-   user process if WRITABLE is true, read-only otherwise.
 
-   Return true if successful, false if a memory allocation error
-   or disk read error occurs. */
+       - ZERO_BYTES bytes at UPAGE + READ_BYTES must be zeroed.
+
+
+  The pages initialized by this function must be writable by the
+  user process if WRITABLE is true, read-only otherwise.
+
+
+  Return true if successful, false if a memory allocation error
+  or disk read error occurs. */
 static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
                          uint32_t read_bytes, uint32_t zero_bytes,
                          bool writable)
@@ -451,7 +512,7 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
 }
 
 /* Create a minimal stack by mapping a zeroed page at the top of
-   user virtual memory. */
+  user virtual memory. */
 static bool setup_stack(void **esp, Command *current_command)
 {
   uint8_t *kpage;
@@ -537,14 +598,14 @@ int get_total_size(Command *current_command)
 }
 
 /* Adds a mapping from user virtual address UPAGE to kernel
-   virtual address KPAGE to the page table.
-   If WRITABLE is true, the user process may modify the page;
-   otherwise, it is read-only.
-   UPAGE must not already be mapped.
-   KPAGE should probably be a page obtained from the user pool
-   with palloc_get_page().
-   Returns true on success, false if UPAGE is already mapped or
-   if memory allocation fails. */
+  virtual address KPAGE to the page table.
+  If WRITABLE is true, the user process may modify the page;
+  otherwise, it is read-only.
+  UPAGE must not already be mapped.
+  KPAGE should probably be a page obtained from the user pool
+  with palloc_get_page().
+  Returns true on success, false if UPAGE is already mapped or
+  if memory allocation fails. */
 static bool install_page(void *upage, void *kpage, bool writable)
 {
   struct thread *t = thread_current();

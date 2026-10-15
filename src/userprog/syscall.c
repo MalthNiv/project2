@@ -7,8 +7,10 @@
 #include "devices/input.h"
 #include "filesys/filesys.h"
 #include "filesys/file.h"
+#include "userprog/process.h"
 
 static void syscall_handler(struct intr_frame *);
+
 void handle_halt(void);
 void handle_exit(struct intr_frame *f);
 void handle_exec(struct intr_frame *f);
@@ -32,47 +34,62 @@ static void syscall_handler(struct intr_frame *f UNUSED)
 {
   int sys_num = *((int *)f->esp);
   f->esp = (char *)f->esp + 4;
+  
+  printf("enter esp=%p\n",f->esp);
 
   switch (sys_num)
   {
   case 0:
     handle_halt();
+    printf("leave esp=%p\n",f->esp);
     break;
   case 1:
     handle_exit(f);
+    printf("leave esp=%p\n",f->esp);
     break;
   case 2:
     handle_exec(f);
+    printf("leave esp=%p\n",f->esp);
     break;
   case 3:
     handle_wait(f);
+    printf("leave esp=%p\n",f->esp);
     break;
   case 4:
     handle_create(f);
+    printf("leave esp=%p\n",f->esp);
     break;
   case 5:
     handle_remove(f);
+    printf("leave esp=%p\n",f->esp);
     break;
   case 6:
     handle_open(f);
+    printf("leave esp=%p\n",f->esp);
     break;
   case 7:
     handle_filesize(f);
+    printf("leave esp=%p\n",f->esp);
     break;
   case 8:
     handle_read(f);
+    printf("leave esp=%p\n",f->esp);
     break;
   case 9:
     handle_write(f);
+    printf("leave esp=%p\n",f->esp);
     break;
   case 10:
     handle_seek(f);
+    printf("leave esp=%p\n",f->esp);
     break;
   case 11:
     handle_tell(f);
+    printf("leave esp=%p\n",f->esp);
     break;
   case 12:
     handle_close(f);
+    printf("leave esp=%p\n",f->esp);
     break;
   }
 }
@@ -84,8 +101,12 @@ void handle_halt(void)
 
 void handle_exit(struct intr_frame *f)
 {
-  uint32_t status = *((int *)f->esp);
-  f->eax = status;
+  int status = *((int *)f->esp);
+  struct thread* cur = thread_current();
+  if(cur->my_status != NULL){
+    cur->my_status->exit_status = status;
+  }
+  printf("%s: exit(%d)\n",cur->name,status);
   thread_exit();
 }
 
@@ -96,7 +117,8 @@ void handle_exec(struct intr_frame *f)
 
 void handle_wait(struct intr_frame *f)
 {
-  return;
+  tid_t pid = *((tid_t*)f->esp);
+  f->eax = process_wait(pid);
 }
 
 void handle_create(struct intr_frame *f)

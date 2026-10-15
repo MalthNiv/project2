@@ -109,6 +109,12 @@ void check_addr(void* addr, struct intr_frame* f) {
 
 void bad_exit(struct intr_frame* f) {
   f->eax = -1;
+
+
+  if(thread_current()->my_status!=NULL){
+    thread_current()->my_status->exit_status=-1;
+  }
+
   printf("%s: exit(%d)\n", thread_current()->name, -1);
   thread_exit();
 }

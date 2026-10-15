@@ -181,7 +181,6 @@ void process_exit(void)
       free(cur->my_status);
     }
     cur->my_status = NULL;
-
   }
 
   

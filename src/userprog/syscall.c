@@ -32,7 +32,7 @@ void handle_seek(struct intr_frame *f);
 void handle_tell(struct intr_frame *f);
 void handle_close(struct intr_frame *f);
 
-int global_fd[128][2];
+
 
 void syscall_init(void)
 {
@@ -202,25 +202,24 @@ void handle_create(struct intr_frame *f)
 
 void handle_remove(struct intr_frame *f)
 {
-  struct thread *cur = thread_current();
-  int fd = *((int *)f->esp) - 2;
-
   char *esp = (char *)f->esp + 4;
+  check_addr(esp, 0, f, false);
   char *file_name = *((char **)esp);
-  cur->fd_table[fd] = NULL;
-  --global_fd[fd][1];
+  char *byte = file_name;
+  check_addr(byte, 0, f, false);
 
-  if (global_fd[fd][1] == 0)
+  while (*byte != '\0')
   {
-    if (!filesys_remove(file_name))
-    {
-      f->eax = 0;
-      thread_exit();
-    }
-    f->eax = 1;
+    byte++;
+    check_addr(byte, 0, f, false);
   }
-  return;
-}
+  lock_acquire(&lock_file);
+  f->eax = filesys_remove(file_name);
+  lock_release(&lock_file);
+
+  }
+  
+
 
 void handle_open(struct intr_frame *f)
 {
@@ -242,13 +241,14 @@ void handle_open(struct intr_frame *f)
   // Synchronized file access
   lock_acquire(&lock_file);
   struct file *file = filesys_open(file_name);
+  lock_release(&lock_file);
   if (!file)
   {
     f->eax = -1;
     return;
   }
 
-  lock_release(&lock_file);
+  
 
   // Corner case
   struct thread *cur = thread_current();
@@ -271,8 +271,6 @@ void handle_open(struct intr_frame *f)
   {
     cur->open_end++;
   }
-
-  global_fd[cur->open_spot][1]++;
   cur->open_spot = cur->open_end;
 }
 

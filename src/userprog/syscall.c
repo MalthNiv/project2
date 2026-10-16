@@ -84,6 +84,8 @@ static void syscall_handler(struct intr_frame *f UNUSED)
   case 12:
     handle_close(f);
     break;
+  default:
+    bad_exit(f);
   }
 }
 
@@ -223,7 +225,6 @@ void handle_open(struct intr_frame *f)
   char *esp = (char *)f->esp + 4;
   check_addr(esp, 0, f, false);
   char *file_name = *((char **)esp);
-  check_addr(file_name, 0, f, false);
 
   char *byte = file_name;
   check_addr(byte, 0, f, false);

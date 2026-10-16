@@ -203,6 +203,8 @@ void process_exit(void) {
   uint32_t* pd;
 
   lock_acquire(&lock_file);
+
+  // null out file descriptors and close files
   for (int i = 0; i < 128; i++) {
     if (cur->fd_table[i] != NULL) {
       file_close(cur->fd_table[i]);
@@ -213,12 +215,14 @@ void process_exit(void) {
   cur->running_file = NULL;
   lock_release(&lock_file);
 
+  // stores the child's PCB on a list
   while (!list_empty(&cur->children_held)) {
     struct list_elem* elm = list_pop_front(&cur->children_held);
     struct status_of_child* child =
         list_entry(elm, struct status_of_child, elem);
     lock_acquire(&child->lock_count);
     child->count--;
+    // checks whether the PCB should be freed or not
     bool counter = child->count == 0;
     lock_release(&child->lock_count);
     if (counter) {
@@ -226,6 +230,7 @@ void process_exit(void) {
     }
   }
   if (cur->my_status != NULL) {
+    // cleans up its own PCB
     sema_up(&cur->my_status->parent);
     lock_acquire(&cur->my_status->lock_count);
     cur->my_status->count--;

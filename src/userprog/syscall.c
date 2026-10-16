@@ -32,8 +32,6 @@ void handle_seek(struct intr_frame *f);
 void handle_tell(struct intr_frame *f);
 void handle_close(struct intr_frame *f);
 
-
-
 void syscall_init(void)
 {
   lock_init(&lock_file);
@@ -213,13 +211,11 @@ void handle_remove(struct intr_frame *f)
     byte++;
     check_addr(byte, 0, f, false);
   }
+
   lock_acquire(&lock_file);
   f->eax = filesys_remove(file_name);
   lock_release(&lock_file);
-
-  }
-  
-
+}
 
 void handle_open(struct intr_frame *f)
 {
@@ -242,15 +238,14 @@ void handle_open(struct intr_frame *f)
   lock_acquire(&lock_file);
   struct file *file = filesys_open(file_name);
   lock_release(&lock_file);
+
+  // Corner cases
   if (!file)
   {
     f->eax = -1;
     return;
   }
 
-  
-
-  // Corner case
   struct thread *cur = thread_current();
 
   if (cur->open_spot == 128)
@@ -263,7 +258,7 @@ void handle_open(struct intr_frame *f)
     return;
   }
 
-  // Allocating the file a file descriptor and updating global counter for file
+  // Allocating the file a file descriptor
   cur->fd_table[cur->open_spot] = file;
   f->eax = cur->open_spot + 2;
 
@@ -299,13 +294,18 @@ void handle_read(struct intr_frame *f)
   esp += 4;
   check_addr(esp, 0, f, false);
   uint8_t *buffer = *((uint8_t **)esp);
-  check_addr(buffer, 0, f, false);
-  // TODO how to check buffer the way we checked file_name?
+  char *temp = (char *)buffer;
 
   // Get size
   esp += 4;
   check_addr(esp, 0, f, false);
   unsigned size = *((unsigned *)esp);
+
+  // Check size bytes of buffer
+  for (unsigned i = 0; i < size; i++)
+  {
+    check_addr(&temp[i], 0, f, false);
+  }
 
   // Handle reading from input
   if (fd == 0)
@@ -336,13 +336,18 @@ void handle_write(struct intr_frame *f)
   esp += 4;
   check_addr(esp, 0, f, false);
   char *buffer = *((char **)esp);
-  check_addr(buffer, 0, f, false);
-  // TODO how to check buffer the way we checked file_name?
+  char *temp = (char *)buffer;
 
   // Get size
   esp += 4;
   check_addr(esp, 0, f, false);
   unsigned size = *((unsigned *)esp);
+
+  // Check size bytes of buffer
+  for (unsigned i = 0; i < size; i++)
+  {
+    check_addr(&temp[i], 0, f, false);
+  }
 
   // Handle writing to console
   if (fd == 1)

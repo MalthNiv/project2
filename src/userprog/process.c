@@ -193,6 +193,20 @@ void process_exit(void)
 {
   struct thread *cur = thread_current();
   uint32_t *pd;
+
+  lock_acquire(&lock_file);
+  for (int i = 0; i < 128; i++)
+  {
+    if (cur->fd_table[i] != NULL)
+    {
+      file_close(cur->fd_table[i]);
+      cur->fd_table[i] = NULL;
+    }
+  }
+  file_close(cur->running_file);
+  cur->running_file = NULL;
+  lock_release(&lock_file);
+
   while (!list_empty(&cur->children_held))
   {
     struct list_elem *elm = list_pop_front(&cur->children_held);
@@ -219,7 +233,6 @@ void process_exit(void)
     }
     cur->my_status = NULL;
   }
-  file_close(cur->running_file);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -434,11 +447,14 @@ bool load(const char *file_name, void (**eip)(void), void **esp,
 
 done:
   /* We arrive here whether the load is successful or not. */
-  if (!success)
+  if (success)
+  {
+    thread_current()->running_file = file;
+  }
+  else
   {
     file_close(file);
   }
-  thread_current()->running_file = file;
   lock_release(&lock_file);
   return success;
 }

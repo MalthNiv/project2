@@ -154,7 +154,7 @@ void handle_exec(struct intr_frame *f)
 
   while (*byte != '\0')
   {
-    byte++;
+    byte = byte + 4;
     check_addr(byte, 0, f, false);
   }
 
@@ -183,7 +183,7 @@ void handle_create(struct intr_frame *f)
 
   while (*byte != '\0')
   {
-    byte++;
+    byte = byte + 4;
     check_addr(byte, 0, f, false);
   }
 
@@ -208,7 +208,7 @@ void handle_remove(struct intr_frame *f)
 
   while (*byte != '\0')
   {
-    byte++;
+    byte = byte + 4;
     check_addr(byte, 0, f, false);
   }
 
@@ -230,7 +230,7 @@ void handle_open(struct intr_frame *f)
 
   while (*byte != '\0')
   {
-    byte++;
+    byte = byte + 4;
     check_addr(byte, 0, f, false);
   }
 
@@ -302,7 +302,7 @@ void handle_read(struct intr_frame *f)
   unsigned size = *((unsigned *)esp);
 
   // Check size bytes of buffer
-  for (unsigned i = 0; i < size; i++)
+  for (unsigned i = 0; i < size; i = i + 4)
   {
     check_addr(&temp[i], 0, f, false);
   }
@@ -344,7 +344,7 @@ void handle_write(struct intr_frame *f)
   unsigned size = *((unsigned *)esp);
 
   // Check size bytes of buffer
-  for (unsigned i = 0; i < size; i++)
+  for (unsigned i = 0; i < size; i = i + 4)
   {
     check_addr(&temp[i], 0, f, false);
   }

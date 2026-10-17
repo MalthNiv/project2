@@ -56,7 +56,7 @@ Slip Days Used: 0
 
 
 >> Please paste a link to your GitLab repo below.
->> https://gitlab-fall26.cs.utexas.edu/nivam/project2
+>> https://gitlab-fall26.cs.utexas.edu/annika21/cs439-project2
 
 
 

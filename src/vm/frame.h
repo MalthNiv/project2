@@ -8,6 +8,9 @@
 #include "threads/thread.h"
 // #include <page.h>
 
+static struct lock frame_lock;
+static struct list alloc_frames;
+
 struct spt_entry {
   bool writeable;
   bool file_backed;
@@ -20,13 +23,12 @@ struct spt_entry {
 
 struct ft_entry {
   void* kvaddr;
-  struct sp_entry* page;
+  struct spt_entry* page;
   bool locked;
   struct thread* owner;
   struct list_elem elem;
+  struct list_elem can_elem;
   int priority;
 };
-
-static struct list alloc_frames;
 
 #endif /* VM/frame.h */

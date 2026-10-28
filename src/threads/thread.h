@@ -102,8 +102,6 @@ struct thread
   /* Shared between thread.c and synch.c. */
   struct list_elem elem; /* List element. */
 
-#ifdef USERPROG
-
   int open_spot;              // added by us
   int open_end;               // added by us
   struct file *fd_table[128]; // added by us
@@ -112,7 +110,6 @@ struct thread
   uint32_t *pagedir; /* Page directory. */
   struct list children_held;
   struct status_of_child *my_status;
-#endif
 
   /* Owned by thread.c. */
   unsigned magic; /* Detects stack overflow. */

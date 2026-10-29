@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
+#include <hash.h>
 
 #include "filesys/file.h"
 #include "threads/flags.h"
@@ -15,6 +16,7 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "userprog/process.h"
+#include "vm/page.h"
 
 
 /* Random value for struct thread's `magic' member.
@@ -441,14 +443,13 @@ static void init_thread(struct thread *t, const char *name, int priority)
   t->open_spot = 0;
   t->open_end = 0;
   list_init(&t->children_held);
-
+  hash_init (&t->spt, spt_hash, spt_less, NULL);
   t->running_file = NULL;
 
   for (int i = 0; i < 128; i++)
   {
     t->fd_table[i] = NULL;
   }
-
   old_level = intr_disable();
   list_push_back(&all_list, &t->allelem);
   intr_set_level(old_level);

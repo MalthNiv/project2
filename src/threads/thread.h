@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include <hash.h>
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -110,6 +111,8 @@ struct thread
   uint32_t *pagedir; /* Page directory. */
   struct list children_held;
   struct status_of_child *my_status;
+
+  struct hash spt;
 
   /* Owned by thread.c. */
   unsigned magic; /* Detects stack overflow. */

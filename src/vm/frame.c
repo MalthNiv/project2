@@ -6,6 +6,7 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "userprog/pagedir.h"
+#include "page.h"
 
 void frame_init(struct ft_entry *fte);
 void frame_alloc(struct thread *cur, struct ft_entry *fte, struct spt_entry *spte, bool lock);

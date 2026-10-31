@@ -17,7 +17,7 @@ unsigned spt_hash(const struct hash_elem *p_, void *aux UNUSED)
 
 /* Returns true if page a precedes page b. */
 bool spt_less(const struct hash_elem *a_, const struct hash_elem *b_,
-               void *aux UNUSED)
+              void *aux UNUSED)
 {
     const struct spt_entry *a = hash_entry(a_, struct spt_entry, hash_elem);
     const struct spt_entry *b = hash_entry(b_, struct spt_entry, hash_elem);

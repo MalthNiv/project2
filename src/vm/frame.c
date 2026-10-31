@@ -11,7 +11,7 @@
 void frame_init(struct ft_entry *fte);
 void frame_alloc(struct thread *cur, struct ft_entry *fte, struct spt_entry *spte, bool lock);
 bool frame_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
-struct ft_entry *frame_eviction(struct spt_entry* spte);
+struct ft_entry *frame_eviction(struct spt_entry *spte);
 
 void frame_init(struct ft_entry *fte)
 {
@@ -23,11 +23,13 @@ void frame_alloc(struct thread *cur, struct ft_entry *fte,
                  struct spt_entry *spte, bool lock)
 {
   void *kpage = palloc_get_page(PAL_USER);
-  
+
   if (!kpage)
   {
     fte = frame_eviction(spte);
-  } else {
+  }
+  else
+  {
     // new
     fte->kvaddr = kpage;
     fte->page = spte;
@@ -50,17 +52,15 @@ bool frame_priority(const struct list_elem *a, const struct list_elem *b,
   return (first->priority > second->priority);
 }
 
-struct ft_entry *frame_eviction(struct spt_entry* spte)
+struct ft_entry *frame_eviction(struct spt_entry *spte)
 {
-  struct list candidates;
-  list_init(&candidates);
-  struct ft_entry *victim = NULL;
-
   // Getting our victims
+  struct ft_entry *victim;
+  bool found = false;
   lock_acquire(&frame_lock);
   struct list_elem *e = list_begin(&alloc_frames);
 
-  for (int i = 0; i < 2; i++)
+  for (int i = 0; i < 3; i++)
   {
     while (e != list_end(&alloc_frames))
     {
@@ -75,35 +75,29 @@ struct ft_entry *frame_eviction(struct spt_entry* spte)
       if (!a && !d)
       {
         victim = temp;
+        found = true;
         break;
       }
-      else if (!a && d)
+      else if (i > 0 && !a && d)
       {
-        temp->priority = 3;
+        victim = temp;
+        break;
       }
-      else if (a && !d)
+      else // default because victim cannot be null after the loop is done
       {
-        temp->priority = 2;
-      }
-      else
-      {
-        temp->priority = 1;
+        victim = temp;
       }
 
-      list_insert_ordered(&candidates, &temp->can_elem, frame_priority, NULL);
-      pagedir_set_accessed(pd, uaddr, false);
+      if (i == 1)
+      {
+        pagedir_set_accessed(pd, uaddr, false);
+      }
     }
 
-    if (!victim)
+    if (found)
     {
       break;
     }
-  }
-
-  // Evicting said victim
-  if (!victim)
-  {
-    victim = list_pop_front(&candidates);
   }
 
   // Update spte of victim

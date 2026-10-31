@@ -11,7 +11,7 @@ struct spt_entry
 {
     void *uaddr;
     struct hash_elem hash_elem;
-    
+
     /* For loading executables */
     bool writeable;
     uint32_t file_page;
@@ -19,7 +19,7 @@ struct spt_entry
     uint32_t page_offset;
     uint32_t read_bytes;
     uint32_t zero_bytes;
-    
+
     /* Determining location */
     bool file_backed;
     bool swapped;

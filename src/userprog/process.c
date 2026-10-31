@@ -20,6 +20,8 @@
 #include "userprog/pagedir.h"
 #include "userprog/syscall.h"
 #include "userprog/tss.h"
+#include "vm/frame.h"
+#include "vm/page.h"
 
 static thread_func start_process NO_RETURN;
 static bool load(const char *cmdline, void (**eip)(void), void **esp,
@@ -362,7 +364,7 @@ struct Elf32_Phdr
 
 static bool setup_stack(void **esp, Command *current_command);
 static bool validate_segment(const struct Elf32_Phdr *, struct file *);
-static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
+static bool load_segment(struct file *file, off_t ofs, uint8_t *upage, struct ft_entry *frame,
                          uint32_t read_bytes, uint32_t zero_bytes,
                          bool writable);
 
@@ -460,7 +462,7 @@ bool load(const char *file_name, void (**eip)(void), void **esp,
         }
 
         // WILL BE REPLACED WITH SPT_ENTRIES
-        if (!load_segment(file, file_page, (void *)mem_page, read_bytes,
+        if (!load_segment(file, file_page, (void *)mem_page, NULL, read_bytes,
                           zero_bytes, writable))
           goto done;
       }
@@ -560,7 +562,7 @@ static bool validate_segment(const struct Elf32_Phdr *phdr, struct file *file)
 
   Return true if successful, false if a memory allocation error
   or disk read error occurs. */
-static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
+static bool load_segment(struct file *file, off_t ofs, uint8_t *upage, struct ft_entry *frame,
                          uint32_t read_bytes, uint32_t zero_bytes,
                          bool writable)
 {
@@ -569,39 +571,28 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
   ASSERT(ofs % PGSIZE == 0);
 
   file_seek(file, ofs);
-  while (read_bytes > 0 || zero_bytes > 0)
+  /* Calculate how to fill this page.
+     We will read PAGE_READ_BYTES bytes from FILE
+     and zero the final PAGE_ZERO_BYTES bytes. */
+  size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
+  size_t page_zero_bytes = PGSIZE - page_read_bytes;
+
+  uint8_t *kpage = frame->kvaddr;
+
+  /* Load this page. */
+  if (file_read(file, kpage, page_read_bytes) != (int)page_read_bytes)
   {
-    /* Calculate how to fill this page.
-       We will read PAGE_READ_BYTES bytes from FILE
-       and zero the final PAGE_ZERO_BYTES bytes. */
-    size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
-    size_t page_zero_bytes = PGSIZE - page_read_bytes;
-
-    /* Get a page of memory. */
-    uint8_t *kpage = palloc_get_page(PAL_USER);
-    if (kpage == NULL)
-      return false;
-
-    /* Load this page. */
-    if (file_read(file, kpage, page_read_bytes) != (int)page_read_bytes)
-    {
-      palloc_free_page(kpage);
-      return false;
-    }
-    memset(kpage + page_read_bytes, 0, page_zero_bytes);
-
-    /* Add the page to the process's address space. */
-    if (!install_page(upage, kpage, writable))
-    {
-      palloc_free_page(kpage);
-      return false;
-    }
-
-    /* Advance. */
-    read_bytes -= page_read_bytes;
-    zero_bytes -= page_zero_bytes;
-    upage += PGSIZE;
+    free_frame(frame);
+    return false;
   }
+  memset(kpage + page_read_bytes, 0, page_zero_bytes);
+
+  // We should only be reading in one page
+  /* Advance.
+  read_bytes -= page_read_bytes;
+  zero_bytes -= page_zero_bytes;
+  upage += PGSIZE; */
+
   return true;
 }
 

@@ -19,10 +19,9 @@ void frame_init(struct ft_entry *fte)
   lock_init(&frame_lock);
 }
 
-void frame_alloc(struct thread *cur, struct ft_entry *fte,
-                 struct spt_entry *spte, bool lock)
+void frame_alloc(struct thread *cur, struct ft_entry *fte, struct spt_entry *spte, bool lock)
 {
-  void *kpage = palloc_get_page(PAL_USER);
+  void *kpage = palloc_get_page(PAL_USER | PAL_ZERO);
 
   if (!kpage)
   {

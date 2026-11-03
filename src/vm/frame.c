@@ -10,12 +10,6 @@
 #include "vm/page.h"
 #include "vm/swap.h"
 
-void frame_init(void);
-bool frame_alloc(struct thread *cur, struct ft_entry *fte, struct spt_entry *spte, bool lock);
-bool frame_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
-struct ft_entry *frame_eviction(struct spt_entry *spte);
-void free_frame(struct ft_entry *fte);
-
 void frame_init(void)
 {
   list_init(&alloc_frames);
@@ -46,17 +40,7 @@ bool frame_alloc(struct thread *cur, struct ft_entry *fte, struct spt_entry *spt
 
   fte->locked = lock;
   fte->owner = cur;
-  fte->priority = 0;
   return true;
-}
-
-bool frame_priority(const struct list_elem *a, const struct list_elem *b,
-                    void *aux UNUSED)
-{
-  struct ft_entry *first = list_entry(a, struct ft_entry, can_elem);
-  struct ft_entry *second = list_entry(b, struct ft_entry, can_elem);
-
-  return (first->priority > second->priority);
 }
 
 struct ft_entry *frame_eviction(struct spt_entry *spte)
@@ -64,6 +48,7 @@ struct ft_entry *frame_eviction(struct spt_entry *spte)
   // Getting our victims
   struct ft_entry *victim;
   bool found = false;
+  
   lock_acquire(&frame_lock);
   struct list_elem *e = list_begin(&alloc_frames);
 
@@ -111,7 +96,8 @@ struct ft_entry *frame_eviction(struct spt_entry *spte)
   victim->page->swapped = true;
 
   // Do swap and set swap slot in spte
-  int slot = alloc_swap_slot(victim->page->uaddr);
+  int slot = alloc_swap_slot(victim->kvaddr);
+
   if (slot == -1)
   {
     lock_release(&frame_lock);
@@ -128,7 +114,7 @@ struct ft_entry *frame_eviction(struct spt_entry *spte)
   return victim;
 }
 
-void free_frame(struct ft_entry *fte)
+void free_frame(struct spt_entry *spte)
 {
   return;
 }

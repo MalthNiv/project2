@@ -15,7 +15,8 @@ struct spt_entry
     struct hash_elem hash_elem;
 
     /* For loading executables */
-    bool writeable;
+    bool is_loaded;
+    bool writable;
     uint32_t page_offset;
     uint32_t read_bytes;
     uint32_t zero_bytes;
@@ -31,7 +32,7 @@ struct spt_entry
 };
 
 void spte_init(struct spt_entry *spte, void *uaddr_, bool w, uint32_t ofs, uint32_t rb, uint32_t zb,
-               bool fb, bool az, struct file *file_);
+               struct file *file_);
 unsigned spt_hash(const struct hash_elem *p_, void *aux UNUSED);
 bool spt_less(const struct hash_elem *a_, const struct hash_elem *b_, void *aux UNUSED);
 struct spt_entry *spte_lookup(struct hash spt, const void *addr);

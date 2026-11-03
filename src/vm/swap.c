@@ -5,65 +5,53 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
+#include <bitmap.h>
 #include "devices/block.h"
 
 #include "threads/malloc.h"
 #include "threads/palloc.h"
+#include "threads/vaddr.h"
 #include "threads/thread.h"
 #include "userprog/pagedir.h"
 
-void swap_init(void);
-int alloc_swap_slot(const void *buffer);
-void free_slot(int slot);
-
-/*
-Initializes the swap setup.
-*/
+/* Initializes the swap setup. */
 void swap_init(void)
 {
-    list_init(&open_spots);
+    swap_space = block_get_role(BLOCK_SWAP);
+    block_sector_t size = block_size(swap_space);
 
-    for (int i = 0; i < 17; i++)
-    {
-        struct open_spot *os;
-        os->open = i;
-
-        list_push_back(&open_spots, &os->elem);
-    }
-
-    for (int i = 0; i < 17; i++)
-    {
-        swap_space[i] = NULL;
-    }
+    size_t num_slots = size / (NUM_SECTORS);
+    swap_slots = bitmap_create(num_slots);
 }
 
-int alloc_swap_slot(const void *buffer)
+/* Gets a swap slot and writes the data from frame to the sectors. */
+int alloc_swap_slot(void *addr)
 {
-    int swap_slot;
-
-    if (list_empty(&open_spots))
+    size_t swap_slot = bitmap_scan_and_flip(swap_slots, 0, 1, false);
+    if (swap_slot == BITMAP_ERROR)
     {
         return -1;
     }
-    else
+
+    block_sector_t start_slot = swap_slot * NUM_SECTORS;
+    for (int i = 0; i < NUM_SECTORS; i++)
     {
-        swap_slot = list_entry(list_pop_front(&open_spots), struct open_spot, elem)->open;
+        void *buf = (char *)addr + (i * BLOCK_SECTOR_SIZE);
+        block_write(swap_space, start_slot + i, buf);
     }
 
-    if (!swap_space[swap_slot])
-    {
-        struct block *b = block_get_role(BLOCK_SWAP);
-        swap_space[swap_slot] = b;
-    }
-
-    block_write(swap_space[swap_slot], swap_space[swap_slot]->size, buffer);
     return swap_slot;
 }
 
-void free_slot(int slot)
+/* Writes the data from the slot to the frame and frees the slot. */
+void free_slot(size_t slot, void *addr)
 {
-    struct open_spot *os;
-    os->open = slot;
+    block_sector_t start_slot = slot * NUM_SECTORS;
+    for (int i = 0; i < NUM_SECTORS; i++)
+    {
+        void *buf = (char *)addr + (i * BLOCK_SECTOR_SIZE);
+        block_read(swap_space, start_slot + i, buf);
+    }
 
-    list_push_back(&open_spots, &os->elem);
+    bitmap_reset(swap_space, slot);
 }

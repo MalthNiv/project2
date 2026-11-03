@@ -364,8 +364,9 @@ struct Elf32_Phdr
 
 static bool setup_stack(void **esp, Command *current_command);
 static bool validate_segment(const struct Elf32_Phdr *, struct file *);
-static bool load_segment(struct file *file, off_t ofs, uint8_t *upage, struct ft_entry *frame,
-                         uint32_t read_bytes, uint32_t zero_bytes);
+static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
+                         uint32_t read_bytes, uint32_t zero_bytes,
+                         bool writable);
 
 /* Loads an ELF executable from FILE_NAME into the current thread.
   Stores the executable's entry point into *EIP
@@ -399,6 +400,7 @@ bool load(const char *file_name, void (**eip)(void), void **esp,
 
   // "Locking" the executable
   file_deny_write(file);
+  lock_release(&lock_file);
 
   /* Read and verify executable header. */
   if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr ||
@@ -460,11 +462,9 @@ bool load(const char *file_name, void (**eip)(void), void **esp,
           zero_bytes = ROUND_UP(page_offset + phdr.p_memsz, PGSIZE);
         }
 
-        // WILL BE REPLACED WITH SPT_ENTRIES
-        struct spt_entry *spte = malloc(sizeof(struct spt_entry));
-        spte_init(spte, (void *)mem_page, writable, file_page, read_bytes, zero_bytes,
-                  true, false, file);
-        hash_insert(&thread_current()->spt, &spte->hash_elem);
+        if (!load_segment(file, file_page, (void *)mem_page, read_bytes,
+                          zero_bytes, writable))
+          goto done;
       }
       else
         goto done;
@@ -492,7 +492,6 @@ done:
     file_close(file);
   }
 
-  lock_release(&lock_file);
   return success;
 }
 
@@ -562,35 +561,38 @@ static bool validate_segment(const struct Elf32_Phdr *phdr, struct file *file)
 
   Return true if successful, false if a memory allocation error
   or disk read error occurs. */
-static bool load_segment(struct file *file, off_t ofs, uint8_t *upage, struct ft_entry *frame,
-                         uint32_t read_bytes, uint32_t zero_bytes)
+static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
+                         uint32_t read_bytes, uint32_t zero_bytes,
+                         bool writable)
 {
   ASSERT((read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT(pg_ofs(upage) == 0);
   ASSERT(ofs % PGSIZE == 0);
 
-  file_seek(file, ofs);
-  /* Calculate how to fill this page.
-     We will read PAGE_READ_BYTES bytes from FILE
-     and zero the final PAGE_ZERO_BYTES bytes. */
-  size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
-  size_t page_zero_bytes = PGSIZE - page_read_bytes;
-
-  uint8_t *kpage = frame->kvaddr;
-
-  /* Load this page. */
-  if (file_read(file, kpage, page_read_bytes) != (int)page_read_bytes)
+  while (read_bytes > 0 || zero_bytes > 0)
   {
-    free_frame(frame);
-    return false;
-  }
-  memset(kpage + page_read_bytes, 0, page_zero_bytes);
+    /* Calculate how to fill this page.
+       We will read PAGE_READ_BYTES bytes from FILE
+       and zero the final PAGE_ZERO_BYTES bytes. */
+    size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
+    size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-  // We should only be reading in one page
-  /* Advance.
-  read_bytes -= page_read_bytes;
-  zero_bytes -= page_zero_bytes;
-  upage += PGSIZE; */
+    /* Lazy loading by creating spt entries */
+    struct spt_entry *spte = malloc(sizeof(struct spt_entry));
+    spte_init(spte, (void *)upage, writable, ofs, page_read_bytes, page_zero_bytes, file);
+
+    spte->is_loaded = false;
+    spte->file_backed = true;
+    spte->swapped = false;
+    spte->all_zero = false;
+
+    hash_insert(&thread_current()->spt, &spte->hash_elem);
+
+    /* Advance. */
+    read_bytes -= page_read_bytes;
+    zero_bytes -= page_zero_bytes;
+    upage += PGSIZE;
+  }
 
   return true;
 }

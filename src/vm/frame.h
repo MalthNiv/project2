@@ -18,8 +18,6 @@ struct ft_entry
   bool locked;
   struct thread *owner;
   struct list_elem elem;
-  struct list_elem can_elem;
-  int priority;
 };
 
 void frame_init(void);

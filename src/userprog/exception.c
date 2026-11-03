@@ -3,6 +3,7 @@
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "devices/block.h"
 #include "userprog/gdt.h"
@@ -12,6 +13,8 @@
 #include "threads/vaddr.h"
 #include "threads/malloc.h"
 #include "userprog/syscall.h"
+#include "userprog/pagedir.h"
+#include "filesys/file.h"
 #include "vm/page.h"
 #include "vm/frame.h"
 #include "vm/swap.h"
@@ -185,25 +188,32 @@ static void page_fault(struct intr_frame *f)
    // Based on boolean, load in data
    if (spte->file_backed)
    {
-      if (!load_segment(spte->file, spte->page_offset, spte->uaddr, frame, spte->read_bytes,
-                        spte->zero_bytes, spte->writeable))
+      file_seek(spte->file, spte->page_offset);
+
+      /* Load this page. */
+      if (file_read(spte->file, frame->kvaddr, spte->read_bytes) != (int)spte->read_bytes)
       {
          free_frame(frame);
          bad_exit(f);
       }
+      memset((void *)((char *)frame->kvaddr + spte->read_bytes), 0, spte->zero_bytes);
    }
    else if (spte->swapped)
    {
-      struct block *b = swap_space[spte->swap_slot];
-      block_read(b, b->size, frame->kvaddr);
-      free_slot(spte->swap_slot);
+      free_slot(spte->swap_slot, frame->kvaddr);
       spte->swapped = false;
    }
 
    // Add the page to the process's address space
-   if (!install_page(spte->uaddr, frame->kvaddr, spte->writeable))
+   bool set = pagedir_get_page(thread_current()->pagedir, spte->uaddr) == NULL &&
+              pagedir_set_page(thread_current()->pagedir, spte->uaddr, frame->kvaddr,
+                               spte->writable);
+
+   if (!set)
    {
       free_frame(frame);
       bad_exit(f);
    }
+
+   spte->is_loaded = true;
 }

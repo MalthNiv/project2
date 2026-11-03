@@ -4,23 +4,22 @@
 #include <list.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <bitmap.h>
 
 #include "devices/block.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
 #include "vm/frame.h"
 #include "vm/page.h"
 
-struct block *swap_space[17] UNUSED; // FIX IDIOTS 10:24 pm
-struct list open_spots;
+#define NUM_SECTORS 8
 
-struct open_spot {
-    int open;
-    struct list_elem elem;
-};
+struct block* swap_space;
+struct bitmap* swap_slots;
 
 void swap_init(void);
-int alloc_swap_slot(const void *buffer);
-void free_slot(int slot);
+int alloc_swap_slot(void *buffer);
+void free_slot(size_t slot, void* addr);
 
 #endif /* VM/swap.h */

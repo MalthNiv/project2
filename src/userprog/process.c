@@ -365,8 +365,7 @@ struct Elf32_Phdr
 static bool setup_stack(void **esp, Command *current_command);
 static bool validate_segment(const struct Elf32_Phdr *, struct file *);
 static bool load_segment(struct file *file, off_t ofs, uint8_t *upage, struct ft_entry *frame,
-                         uint32_t read_bytes, uint32_t zero_bytes,
-                         bool writable);
+                         uint32_t read_bytes, uint32_t zero_bytes);
 
 /* Loads an ELF executable from FILE_NAME into the current thread.
   Stores the executable's entry point into *EIP
@@ -463,7 +462,7 @@ bool load(const char *file_name, void (**eip)(void), void **esp,
 
         // WILL BE REPLACED WITH SPT_ENTRIES
         struct spt_entry *spte = malloc(sizeof(struct spt_entry));
-        spte_init(spte, file_page, writable, page_offset, read_bytes, zero_bytes,
+        spte_init(spte, (void *)mem_page, writable, file_page, read_bytes, zero_bytes,
                   true, false, file);
         hash_insert(&thread_current()->spt, &spte->hash_elem);
       }
@@ -564,8 +563,7 @@ static bool validate_segment(const struct Elf32_Phdr *phdr, struct file *file)
   Return true if successful, false if a memory allocation error
   or disk read error occurs. */
 static bool load_segment(struct file *file, off_t ofs, uint8_t *upage, struct ft_entry *frame,
-                         uint32_t read_bytes, uint32_t zero_bytes,
-                         bool writable UNUSED)
+                         uint32_t read_bytes, uint32_t zero_bytes)
 {
   ASSERT((read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT(pg_ofs(upage) == 0);

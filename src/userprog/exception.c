@@ -1,10 +1,16 @@
 #include "userprog/exception.h"
+
 #include <inttypes.h>
 #include <stdio.h>
+#include <stdlib.h>
+
 #include "userprog/gdt.h"
+#include "userprog/process.h"
+#include "userprog/process.c"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "threads/malloc.h"
 #include "userprog/syscall.h"
 #include "vm/page.h"
 #include "vm/frame.h"

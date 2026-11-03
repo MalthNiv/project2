@@ -3,13 +3,14 @@
 
 #include <list.h>
 #include <stdbool.h>
+#include <stdlib.h>
 
 #include "threads/synch.h"
 #include "threads/thread.h"
 // #include <page.h>
 
-static struct lock frame_lock;
-static struct list alloc_frames;
+static struct lock frame_lock UNUSED;
+static struct list alloc_frames UNUSED;
 
 struct ft_entry
 {
@@ -21,5 +22,11 @@ struct ft_entry
   struct list_elem can_elem;
   int priority;
 };
+
+void frame_init(struct ft_entry *fte);
+void frame_alloc(struct thread *cur, struct ft_entry *fte, struct spt_entry *spte, bool lock);
+bool frame_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+struct ft_entry *frame_eviction(struct spt_entry *spte);
+void free_frame(struct ft_entry *fte);
 
 #endif /* VM/frame.h */

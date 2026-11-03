@@ -4,6 +4,8 @@
 #include <list.h>
 #include <hash.h>
 #include <stdbool.h>
+#include <stdlib.h>
+
 #include "threads/synch.h"
 #include "threads/thread.h"
 
@@ -32,5 +34,6 @@ struct spt_entry
 
 unsigned spt_hash(const struct hash_elem *p_, void *aux UNUSED);
 bool spt_less(const struct hash_elem *a_, const struct hash_elem *b_, void *aux UNUSED);
+struct spt_entry *spte_lookup(struct hash spt, const void *addr);
 
 #endif /* VM/page.h */

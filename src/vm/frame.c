@@ -2,31 +2,37 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
+
 #include "threads/malloc.h"
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "userprog/pagedir.h"
-#include "page.h"
+#include "vm/page.h"
+#include "vm/swap.h"
 
-void frame_init(struct ft_entry *fte);
-void frame_alloc(struct thread *cur, struct ft_entry *fte, struct spt_entry *spte, bool lock);
+void frame_init(void);
+bool frame_alloc(struct thread *cur, struct ft_entry *fte, struct spt_entry *spte, bool lock);
 bool frame_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 struct ft_entry *frame_eviction(struct spt_entry *spte);
 void free_frame(struct ft_entry *fte);
 
-void frame_init(struct ft_entry *fte)
+void frame_init(void)
 {
   list_init(&alloc_frames);
   lock_init(&frame_lock);
 }
 
-void frame_alloc(struct thread *cur, struct ft_entry *fte, struct spt_entry *spte, bool lock)
+bool frame_alloc(struct thread *cur, struct ft_entry *fte, struct spt_entry *spte, bool lock)
 {
   void *kpage = palloc_get_page(PAL_USER | PAL_ZERO);
 
   if (!kpage)
   {
     fte = frame_eviction(spte);
+    if (!fte)
+    {
+      return false;
+    }
   }
   else
   {
@@ -41,6 +47,7 @@ void frame_alloc(struct thread *cur, struct ft_entry *fte, struct spt_entry *spt
   fte->locked = lock;
   fte->owner = cur;
   fte->priority = 0;
+  return true;
 }
 
 bool frame_priority(const struct list_elem *a, const struct list_elem *b,
@@ -102,10 +109,18 @@ struct ft_entry *frame_eviction(struct spt_entry *spte)
 
   // Update spte of victim
   victim->page->swapped = true;
-  victim->page = spte;
-  lock_release(&frame_lock);
 
-  // TODO: Do swap and set swap slot in spte
+  // Do swap and set swap slot in spte
+  int slot = alloc_swap_slot(victim->page->uaddr);
+  if (slot == -1)
+  {
+    lock_release(&frame_lock);
+    return NULL;
+  }
+
+  victim->page = spte;
+  victim->page->swap_slot = slot;
+  lock_release(&frame_lock);
 
   // Clear pagedir
   pagedir_clear_page(victim->owner->pagedir, victim->page->uaddr);

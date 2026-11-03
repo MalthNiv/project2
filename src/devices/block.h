@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 #include <inttypes.h>
+#include <list.h>
 
 /* Size of a block device sector in bytes.
    All IDE disks use this sector size, as do most USB and SCSI
@@ -20,55 +21,69 @@ typedef uint32_t block_sector_t;
 
 /* Higher-level interface for file systems, etc. */
 
-struct block;
-
 /* Type of a block device. */
 enum block_type
 {
-  /* Block device types that play a role in Pintos. */
-  BLOCK_KERNEL,  /* Pintos OS kernel. */
-  BLOCK_FILESYS, /* File system. */
-  BLOCK_SCRATCH, /* Scratch. */
-  BLOCK_SWAP,    /* Swap. */
-  BLOCK_ROLE_CNT,
+   /* Block device types that play a role in Pintos. */
+   BLOCK_KERNEL,  /* Pintos OS kernel. */
+   BLOCK_FILESYS, /* File system. */
+   BLOCK_SCRATCH, /* Scratch. */
+   BLOCK_SWAP,    /* Swap. */
+   BLOCK_ROLE_CNT,
 
-  /* Other kinds of block devices that Pintos may see but does
-     not interact with. */
-  BLOCK_RAW = BLOCK_ROLE_CNT, /* "Raw" device with unidentified contents. */
-  BLOCK_FOREIGN,              /* Owned by non-Pintos operating system. */
-  BLOCK_CNT                   /* Number of Pintos block types. */
+   /* Other kinds of block devices that Pintos may see but does
+      not interact with. */
+   BLOCK_RAW = BLOCK_ROLE_CNT, /* "Raw" device with unidentified contents. */
+   BLOCK_FOREIGN,              /* Owned by non-Pintos operating system. */
+   BLOCK_CNT                   /* Number of Pintos block types. */
 };
 
-const char *block_type_name (enum block_type);
+/* A block device. */
+struct block
+{
+   struct list_elem list_elem; /* Element in all_blocks. */
+
+   char name[16];        /* Block device name. */
+   enum block_type type; /* Type of block device. */
+   block_sector_t size;  /* Size in sectors. */
+
+   const struct block_operations *ops; /* Driver operations. */
+   void *aux;                          /* Extra data owned by driver. */
+
+   unsigned long long read_cnt;  /* Number of sectors read. */
+   unsigned long long write_cnt; /* Number of sectors written. */
+};
+
+const char *block_type_name(enum block_type);
 
 /* Finding block devices. */
-struct block *block_get_role (enum block_type);
-void block_set_role (enum block_type, struct block *);
-struct block *block_get_by_name (const char *name);
+struct block *block_get_role(enum block_type);
+void block_set_role(enum block_type, struct block *);
+struct block *block_get_by_name(const char *name);
 
-struct block *block_first (void);
-struct block *block_next (struct block *);
+struct block *block_first(void);
+struct block *block_next(struct block *);
 
 /* Block device operations. */
-block_sector_t block_size (struct block *);
-void block_read (struct block *, block_sector_t, void *);
-void block_write (struct block *, block_sector_t, const void *);
-const char *block_name (struct block *);
-enum block_type block_type (struct block *);
+block_sector_t block_size(struct block *);
+void block_read(struct block *, block_sector_t, void *);
+void block_write(struct block *, block_sector_t, const void *);
+const char *block_name(struct block *);
+enum block_type block_type(struct block *);
 
 /* Statistics. */
-void block_print_stats (void);
+void block_print_stats(void);
 
 /* Lower-level interface to block device drivers. */
 
 struct block_operations
 {
-  void (*read) (void *aux, block_sector_t, void *buffer);
-  void (*write) (void *aux, block_sector_t, const void *buffer);
+   void (*read)(void *aux, block_sector_t, void *buffer);
+   void (*write)(void *aux, block_sector_t, const void *buffer);
 };
 
-struct block *block_register (const char *name, enum block_type,
-                              const char *extra_info, block_sector_t size,
-                              const struct block_operations *, void *aux);
+struct block *block_register(const char *name, enum block_type,
+                             const char *extra_info, block_sector_t size,
+                             const struct block_operations *, void *aux);
 
 #endif /* devices/block.h */

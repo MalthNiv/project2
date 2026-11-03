@@ -16,8 +16,6 @@ struct spt_entry
 
     /* For loading executables */
     bool writeable;
-    uint32_t file_page;
-    uint32_t mem_page;
     uint32_t page_offset;
     uint32_t read_bytes;
     uint32_t zero_bytes;
@@ -32,6 +30,8 @@ struct spt_entry
     int swap_slot;
 };
 
+void spte_init(struct spt_entry *spte, void *uaddr_, bool w, uint32_t ofs, uint32_t rb, uint32_t zb,
+               bool fb, bool az, struct file *file_);
 unsigned spt_hash(const struct hash_elem *p_, void *aux UNUSED);
 bool spt_less(const struct hash_elem *a_, const struct hash_elem *b_, void *aux UNUSED);
 struct spt_entry *spte_lookup(struct hash spt, const void *addr);

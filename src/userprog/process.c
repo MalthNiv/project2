@@ -462,9 +462,10 @@ bool load(const char *file_name, void (**eip)(void), void **esp,
         }
 
         // WILL BE REPLACED WITH SPT_ENTRIES
-        if (!load_segment(file, file_page, (void *)mem_page, NULL, read_bytes,
-                          zero_bytes, writable))
-          goto done;
+        struct spt_entry *spte = malloc(sizeof(struct spt_entry));
+        spte_init(spte, file_page, writable, page_offset, read_bytes, zero_bytes,
+                  true, false, file);
+        hash_insert(&thread_current()->spt, &spte->hash_elem);
       }
       else
         goto done;
@@ -564,7 +565,7 @@ static bool validate_segment(const struct Elf32_Phdr *phdr, struct file *file)
   or disk read error occurs. */
 static bool load_segment(struct file *file, off_t ofs, uint8_t *upage, struct ft_entry *frame,
                          uint32_t read_bytes, uint32_t zero_bytes,
-                         bool writable)
+                         bool writable UNUSED)
 {
   ASSERT((read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT(pg_ofs(upage) == 0);

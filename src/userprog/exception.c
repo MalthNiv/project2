@@ -4,9 +4,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "devices/block.h"
 #include "userprog/gdt.h"
 #include "userprog/process.h"
-#include "userprog/process.c"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
@@ -14,6 +14,7 @@
 #include "userprog/syscall.h"
 #include "vm/page.h"
 #include "vm/frame.h"
+#include "vm/swap.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -175,7 +176,11 @@ static void page_fault(struct intr_frame *f)
 
    // Get a frame to map the spte
    struct ft_entry *frame = malloc(sizeof(struct ft_entry));
-   frame_alloc(thread_current(), frame, spte, false);
+   if (!frame_alloc(thread_current(), frame, spte, false))
+   {
+      free_frame(frame);
+      bad_exit(f);
+   }
 
    // Based on boolean, load in data
    if (spte->file_backed)
@@ -189,7 +194,10 @@ static void page_fault(struct intr_frame *f)
    }
    else if (spte->swapped)
    {
-      // stuff
+      struct block *b = swap_space[spte->swap_slot];
+      block_read(b, b->size, frame->kvaddr);
+      free_slot(spte->swap_slot);
+      spte->swapped = false;
    }
 
    // Add the page to the process's address space

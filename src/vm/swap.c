@@ -16,6 +16,9 @@ void swap_init(void);
 int alloc_swap_slot(const void *buffer);
 void free_slot(int slot);
 
+/*
+Initializes the swap setup.
+*/
 void swap_init(void)
 {
     list_init(&open_spots);

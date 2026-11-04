@@ -18,7 +18,6 @@
 #include "userprog/process.h"
 #include "vm/page.h"
 
-
 /* Random value for struct thread's `magic' member.
   Used to detect stack overflow.  See the big comment at the top
   of thread.h for details. */
@@ -184,6 +183,7 @@ tid_t thread_create(const char *name, int priority, thread_func *function,
   /* Initialize thread. */
   init_thread(t, name, priority);
   tid = t->tid = allocate_tid();
+  hash_init(&t->spt, spt_hash, spt_less, NULL);
 
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame(t, sizeof *kf);
@@ -275,9 +275,7 @@ void thread_exit(void)
 {
   ASSERT(!intr_context());
 
-
   process_exit();
-
 
   /* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us
@@ -439,11 +437,10 @@ static void init_thread(struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *)t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
+  list_init(&t->children_held);
 
   t->open_spot = 0;
   t->open_end = 0;
-  list_init(&t->children_held);
-  hash_init (&t->spt, spt_hash, spt_less, NULL);
   t->running_file = NULL;
 
   for (int i = 0; i < 128; i++)

@@ -16,7 +16,7 @@
 struct lock lock_file;
 
 static void syscall_handler(struct intr_frame *);
-void check_addr(void *addr, int fd, struct intr_frame *f, bool is_fd);
+void check_addr(void *start, void *end, int fd, struct intr_frame *f, bool is_fd);
 void bad_exit(struct intr_frame *f);
 void handle_halt(void);
 void handle_exit(struct intr_frame *f);
@@ -40,7 +40,7 @@ void syscall_init(void)
 
 static void syscall_handler(struct intr_frame *f UNUSED)
 {
-  check_addr(f->esp, 0, f, false);
+  check_addr(f->esp, (char *)f->esp + 4, 0, f, false);
   int sys_num = *((int *)f->esp);
 
   switch (sys_num)
@@ -48,40 +48,40 @@ static void syscall_handler(struct intr_frame *f UNUSED)
   case SYS_HALT:
     handle_halt();
     break;
-  case 1:
+  case SYS_EXIT:
     handle_exit(f);
     break;
-  case 2:
+  case SYS_EXEC:
     handle_exec(f);
     break;
-  case 3:
+  case SYS_WAIT:
     handle_wait(f);
     break;
-  case 4:
+  case SYS_CREATE:
     handle_create(f);
     break;
-  case 5:
+  case SYS_REMOVE:
     handle_remove(f);
     break;
-  case 6:
+  case SYS_OPEN:
     handle_open(f);
     break;
-  case 7:
+  case SYS_FILESIZE:
     handle_filesize(f);
     break;
-  case 8:
+  case SYS_READ:
     handle_read(f);
     break;
-  case 9:
+  case SYS_WRITE:
     handle_write(f);
     break;
-  case 10:
+  case SYS_SEEK:
     handle_seek(f);
     break;
-  case 11:
+  case SYS_TELL:
     handle_tell(f);
     break;
-  case 12:
+  case SYS_CLOSE:
     handle_close(f);
     break;
   default:
@@ -89,7 +89,7 @@ static void syscall_handler(struct intr_frame *f UNUSED)
   }
 }
 
-void check_addr(void *addr, int fd, struct intr_frame *f, bool is_fd)
+void check_addr(void *start, void *end, int fd, struct intr_frame *f, bool is_fd)
 {
   if (is_fd) // Check the file descriptor
   {
@@ -100,45 +100,26 @@ void check_addr(void *addr, int fd, struct intr_frame *f, bool is_fd)
   }
   else // Check a pointer
   {
-    for (int i = 0; i < 4; i++)
+    if (!start || !end || is_kernel_vaddr(start) || is_kernel_vaddr(end) ||
+        !pagedir_get_page(thread_current()->pagedir, start))
     {
-      char *temp = (char *)addr + i;
-      if (!temp || is_kernel_vaddr(temp) ||
-          !pagedir_get_page(thread_current()->pagedir, temp))
+      bad_exit(f);
+    }
+
+    void *start_page = pg_round_down(start);
+    void *end_page = pg_round_down(end);
+
+    while (start_page <= end_page)
+    {
+      struct spt_entry *spte = spte_lookup(&thread_current()->spt, start_page);
+
+      if (spte == NULL)
       {
-        // does the stack need to be expanded?
-        if(temp && !is_kernel_vaddr(temp) && temp - f->esp < 4096){ //check the math here
-          uint8_t *kpage;
-  bool success = false;
-
-  kpage = palloc_get_page(PAL_USER | PAL_ZERO);
-  if (kpage != NULL)
-  {
-    success = install_page(((uint8_t *)f->esp) + PGSIZE, kpage, true); // check math
-    if (!success)
-    {
-      palloc_free_page(kpage);
-      return success;
-    }
-  }
-        } else if(temp && !is_kernel_vaddr(temp) && temp - f->esp > 4096){
-bool success = false;
-
-  kpage = palloc_get_page(PAL_USER | PAL_ZERO);
-  if (kpage != NULL)
-  {
-    success = install_page(((uint8_t *)f->esp) - PGSIZE, kpage, true); // check math
-    if (!success)
-    {
-      palloc_free_page(kpage);
-      return success;
-    }
-  }
-        } else {
-          bad_exit(f);
-        }
-        
+        // fix during stack growth
+        bad_exit(f);
       }
+
+      start_page += PGSIZE;
     }
   }
 }
@@ -162,7 +143,7 @@ void handle_exit(struct intr_frame *f)
 {
   // Get exit status
   char *esp = (char *)f->esp + 4;
-  check_addr(esp, 0, f, false);
+  check_addr(esp, (char *)esp + 4, 0, f, false);
   int status = *((int *)esp);
 
   // Status for zombies
@@ -180,16 +161,16 @@ void handle_exec(struct intr_frame *f)
 {
   // Get command line
   char *esp = (char *)f->esp + 4;
-  check_addr(esp, 0, f, false);
-  char *cmd_line = *((char **)esp);
-  char *byte = cmd_line;
-  check_addr(byte, 0, f, false);
 
-  while (*byte != '\0')
+  check_addr(esp, (char *)esp + 4, 0, f, false);
+  char *cmd_line = *((char **)esp);
+
+  char *end = cmd_line;
+  while (*end != '\0')
   {
-    byte = byte + 4;
-    check_addr(byte, 0, f, false);
+    end = end + 4;
   }
+  check_addr(cmd_line, end, 0, f, false);
 
   f->eax = process_execute(cmd_line);
 }
@@ -198,7 +179,7 @@ void handle_wait(struct intr_frame *f)
 {
   // Get pid
   char *esp = (char *)f->esp + 4;
-  check_addr(esp, 0, f, false);
+  check_addr(esp, (char *)esp + 4, 0, f, false);
   tid_t pid = *((tid_t *)esp);
 
   f->eax = process_wait(pid);
@@ -208,21 +189,19 @@ void handle_create(struct intr_frame *f)
 {
   // Get file name
   char *esp = (char *)f->esp + 4;
-  check_addr(esp, 0, f, false);
+  check_addr(esp, (char *)esp + 4, 0, f, false);
   char *file_name = *((char **)esp);
 
-  char *byte = file_name;
-  check_addr(byte, 0, f, false);
-
-  while (*byte != '\0')
+  char *end = file_name;
+  while (*end != '\0')
   {
-    byte = byte + 4;
-    check_addr(byte, 0, f, false);
+    end = end + 4;
   }
+  check_addr(file_name, end, 0, f, false);
 
   // Get size
   esp += 4;
-  check_addr(esp, 0, f, false);
+  check_addr(esp, (char *)esp + 4, 0, f, false);
   unsigned size = *((unsigned *)esp);
 
   // Synchronized file create
@@ -234,16 +213,15 @@ void handle_create(struct intr_frame *f)
 void handle_remove(struct intr_frame *f)
 {
   char *esp = (char *)f->esp + 4;
-  check_addr(esp, 0, f, false);
+  check_addr(esp, (char *)esp + 4, 0, f, false);
   char *file_name = *((char **)esp);
-  char *byte = file_name;
-  check_addr(byte, 0, f, false);
 
-  while (*byte != '\0')
+  char *end = file_name;
+  while (*end != '\0')
   {
-    byte = byte + 4;
-    check_addr(byte, 0, f, false);
+    end = end + 4;
   }
+  check_addr(file_name, end, 0, f, false);
 
   lock_acquire(&lock_file);
   f->eax = filesys_remove(file_name);
@@ -254,17 +232,15 @@ void handle_open(struct intr_frame *f)
 {
   // Get file name
   char *esp = (char *)f->esp + 4;
-  check_addr(esp, 0, f, false);
+  check_addr(esp, (char *)esp + 4, 0, f, false);
   char *file_name = *((char **)esp);
 
-  char *byte = file_name;
-  check_addr(byte, 0, f, false);
-
-  while (*byte != '\0')
+  char *end = file_name;
+  while (*end != '\0')
   {
-    byte = byte + 4;
-    check_addr(byte, 0, f, false);
+    end = end + 4;
   }
+  check_addr(file_name, end, 0, f, false);
 
   // Synchronized file access
   lock_acquire(&lock_file);
@@ -305,9 +281,9 @@ void handle_filesize(struct intr_frame *f)
 {
   // Get file descriptor
   char *esp = (char *)f->esp + 4;
-  check_addr(esp, 0, f, false);
+  check_addr(esp, (char *)esp + 4, 0, f, false);
   int fd = *((int *)esp);
-  check_addr(NULL, fd, f, true);
+  check_addr(NULL, NULL, fd, f, true);
 
   // Synchronized file access
   lock_acquire(&lock_file);
@@ -319,25 +295,21 @@ void handle_read(struct intr_frame *f)
 {
   // Get file descriptor
   char *esp = (char *)f->esp + 4;
-  check_addr(esp, 0, f, false);
+  check_addr(esp, (char *)esp + 4, 0, f, false);
   int fd = *((int *)esp);
 
   // Get buffer
   esp += 4;
-  check_addr(esp, 0, f, false);
+  check_addr(esp, (char *)esp + 4, 0, f, false);
   uint8_t *buffer = *((uint8_t **)esp);
-  char *temp = (char *)buffer;
 
   // Get size
   esp += 4;
-  check_addr(esp, 0, f, false);
+  check_addr(esp, (char *)esp + 4, 0, f, false);
   unsigned size = *((unsigned *)esp);
 
   // Check size bytes of buffer
-  for (unsigned i = 0; i < size; i = i + 4)
-  {
-    check_addr(&temp[i], 0, f, false);
-  }
+  check_addr(buffer, (char *)buffer + size, 0, f, false);
 
   // Handle reading from input
   if (fd == 0)
@@ -349,7 +321,7 @@ void handle_read(struct intr_frame *f)
     f->eax = size;
     return;
   }
-  check_addr(NULL, fd, f, true); // delayed checked because we needed fd == 0
+  check_addr(NULL, NULL, fd, f, true); // delayed checked because we needed fd == 0
 
   // Synchronized file access
   lock_acquire(&lock_file);
@@ -361,25 +333,21 @@ void handle_write(struct intr_frame *f)
 {
   // Get file descriptor
   char *esp = (char *)f->esp + 4;
-  check_addr(esp, 0, f, false);
+  check_addr(esp, (char *)esp + 4, 0, f, false);
   int fd = *((int *)esp);
 
   // Get buffer
   esp += 4;
-  check_addr(esp, 0, f, false);
+  check_addr(esp, (char *)esp + 4, 0, f, false);
   char *buffer = *((char **)esp);
-  char *temp = (char *)buffer;
 
   // Get size
   esp += 4;
-  check_addr(esp, 0, f, false);
+  check_addr(esp, (char *)esp + 4, 0, f, false);
   unsigned size = *((unsigned *)esp);
 
   // Check size bytes of buffer
-  for (unsigned i = 0; i < size; i = i + 4)
-  {
-    check_addr(&temp[i], 0, f, false);
-  }
+  check_addr(buffer, (char *)buffer + size, 0, f, false);
 
   // Handle writing to console
   if (fd == 1)
@@ -395,7 +363,7 @@ void handle_write(struct intr_frame *f)
     f->eax = original;
     return;
   }
-  check_addr(NULL, fd, f, true); // delayed fd check
+  check_addr(NULL, NULL, fd, f, true); // delayed fd check
 
   // Synchronized file access
   lock_acquire(&lock_file);
@@ -407,13 +375,13 @@ void handle_seek(struct intr_frame *f)
 {
   // Get file descriptor
   char *esp = (char *)f->esp + 4;
-  check_addr(esp, 0, f, false);
+  check_addr(esp, (char *)esp + 4, 0, f, false);
   int fd = *((int *)esp);
-  check_addr(NULL, fd, f, true);
+  check_addr(NULL, NULL, fd, f, true);
 
   // Get size
   esp += 4;
-  check_addr(esp, 0, f, false);
+  check_addr(esp, (char *)esp + 4, 0, f, false);
   unsigned pos = *((unsigned *)esp);
 
   // Synchronized file access
@@ -426,9 +394,9 @@ void handle_tell(struct intr_frame *f)
 {
   // Get file descriptor
   char *esp = (char *)f->esp + 4;
-  check_addr(esp, 0, f, false);
+  check_addr(esp, (char *)esp + 4, 0, f, false);
   int fd = *((int *)esp);
-  check_addr(NULL, fd, f, true);
+  check_addr(NULL, NULL, fd, f, true);
 
   // Synchronized file access
   lock_acquire(&lock_file);
@@ -441,9 +409,9 @@ void handle_close(struct intr_frame *f)
 {
   // Get file descriptor
   char *esp = (char *)f->esp + 4;
-  check_addr(esp, 0, f, false);
+  check_addr(esp, (char *)esp + 4, 0, f, false);
   int fd = *((int *)esp);
-  check_addr(NULL, fd, f, true);
+  check_addr(NULL, NULL, fd, f, true);
 
   // Synchronized file access
   struct thread *cur = thread_current();

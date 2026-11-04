@@ -156,24 +156,25 @@ static void page_fault(struct intr_frame *f)
    write = (f->error_code & PF_W) != 0;
    user = (f->error_code & PF_U) != 0;
 
-   if (!not_present || user)
+   if (!not_present)
    {
       bad_exit(f);
    }
 
    /* To implement virtual memory, delete the rest of the function
       body, and replace it with code that brings in the page to
-      which fault_addr refers. */
+      which fault_addr refers.
    printf("Page fault at %p: %s error %s page in %s context.\n", fault_addr,
           not_present ? "not present" : "rights violation",
           write ? "writing" : "reading", user ? "user" : "kernel");
 
-   printf("There is no crying in Pintos!\n");
+   printf("There is no crying in Pintos!\n"); */
 
    // Look up the spte for the fault address
-   struct spt_entry *spte = spte_lookup(thread_current()->spt, fault_addr);
+   struct spt_entry *spte = spte_lookup(&thread_current()->spt, fault_addr);
    if (!spte) // for now, will change for stack growth
    {
+      // printf("DEBUG: SPTE not found for %p\n", fault_addr);
       bad_exit(f);
    }
 
@@ -191,8 +192,10 @@ static void page_fault(struct intr_frame *f)
       file_seek(spte->file, spte->page_offset);
 
       /* Load this page. */
-      if (file_read(spte->file, frame->kvaddr, spte->read_bytes) != (int)spte->read_bytes)
+      int bytes_read = file_read(spte->file, frame->kvaddr, spte->read_bytes);
+      if (bytes_read != (int)spte->read_bytes)
       {
+         // printf("DEBUG: File read mismatch! Expected %d, got %d\n", spte->read_bytes, bytes_read);
          free(frame);
          bad_exit(f);
       }
@@ -203,6 +206,10 @@ static void page_fault(struct intr_frame *f)
       free_slot(spte->swap_slot, frame->kvaddr);
       spte->swapped = false;
    }
+   else if (spte->all_zero)
+   {
+      memset(frame->kvaddr, 0, PGSIZE);
+   }
 
    // Add the page to the process's address space
    bool set = pagedir_get_page(thread_current()->pagedir, spte->uaddr) == NULL &&
@@ -211,6 +218,7 @@ static void page_fault(struct intr_frame *f)
 
    if (!set)
    {
+      // printf("DEBUG: pagedir_set_page failed for %p\n", spte->uaddr);
       free(frame);
       bad_exit(f);
    }

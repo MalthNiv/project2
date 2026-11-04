@@ -393,13 +393,17 @@ bool load(const char *file_name, void (**eip)(void), void **esp,
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create();
   if (t->pagedir == NULL)
+  {
+    lock_release(&lock_file);
     goto done;
+  }
   process_activate();
 
   /* Open executable file. */
   file = filesys_open(file_name);
   if (file == NULL)
   {
+    lock_release(&lock_file);
     printf("load: %s: open failed\n", file_name);
     goto done;
   }
@@ -590,21 +594,14 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
     spte->is_loaded = false;
     spte->file_backed = true;
     spte->swapped = false;
-    
-    if (page_zero_bytes == PGSIZE)
-    {
-      spte->all_zero = true;
-    }
-    else
-    {
-      spte->all_zero = false;
-    }
+    spte->all_zero = (page_read_bytes == 0);
 
     hash_insert(&thread_current()->spt, &spte->hash_elem);
 
     /* Advance. */
     read_bytes -= page_read_bytes;
     zero_bytes -= page_zero_bytes;
+    ofs += page_read_bytes;
     upage += PGSIZE;
   }
 
@@ -615,69 +612,82 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
   user virtual memory. */
 static bool setup_stack(void **esp, Command *current_command)
 {
-  uint8_t *kpage;
   bool success = false;
 
-  kpage = palloc_get_page(PAL_USER | PAL_ZERO);
-  if (kpage != NULL)
+  // Adding the initial stack page to the spt
+  struct spt_entry *spte = malloc(sizeof(struct spt_entry));
+  spte_init(spte, ((uint8_t *)PHYS_BASE) - PGSIZE, true, 0, 0, 0, NULL);
+
+  spte->is_loaded = true;
+  spte->file_backed = false;
+  spte->swapped = false;
+  spte->all_zero = true;
+
+  struct ft_entry *frame = malloc(sizeof(struct ft_entry));
+  if (!frame_alloc(thread_current(), frame, spte, false))
   {
-    success = install_page(((uint8_t *)PHYS_BASE) - PGSIZE, kpage, true);
-    if (!success)
-    {
-      palloc_free_page(kpage);
-      return success;
-    }
-
-    *esp = PHYS_BASE;
-
-    int total_size = get_total_size(current_command);
-    int word_align = 0;
-    while ((total_size + word_align) % 4 != 0)
-    {
-      word_align++;
-    }
-    if (total_size + word_align > PGSIZE)
-    {
-      return false;
-    }
-
-    // put the strings on the stack
-    for (int i = current_command->counter - 1; i >= 0; --i)
-    {
-      int length = strlen(current_command->parsed_array[i]) + 1;
-      *esp = (char *)*esp - length;
-      strlcpy(*esp, current_command->parsed_array[i], length);
-      current_command->parsed_array[i] = *esp;
-    }
-
-    // put word_align 0s on the stack
-    for (int i = 0; i < word_align; ++i)
-    {
-      *esp = (char *)*esp - 1;
-      *(char *)*esp = 0;
-    }
-
-    // put the pointers to the strings on the stack
-    for (int i = current_command->counter; i >= 0; --i)
-    {
-      *esp = (char *)*esp - 4;
-      *(char **)*esp = current_command->parsed_array[i];
-    }
-
-    // put the metadata (argv pointer, argc, and the return address) on the
-    // stack
-    char **argv_addr = *esp;
-    *esp = (char *)*esp - 4;
-    *(char ***)*esp = argv_addr;
-    *esp = (char *)*esp - 4;
-    *(int *)*esp = current_command->counter;
-    *esp = (char *)*esp - 4;
-    *(int *)*esp = 0;
-
-    // hex_dump((uintptr_t)*esp, *esp, (char *)PHYS_BASE - (char *)*esp, true);
+    free(spte);
+    free(frame);
+    return false;
   }
 
-  return success;
+  hash_insert(&thread_current()->spt, &spte->hash_elem);
+
+  success = install_page(((uint8_t *)PHYS_BASE) - PGSIZE, frame->kvaddr, true);
+  if (!success)
+  {
+    hash_destroy(&thread_current()->spt, free_spte);
+    return success;
+  }
+
+  // Setting up the stack
+  *esp = PHYS_BASE;
+
+  int total_size = get_total_size(current_command);
+  int word_align = 0;
+  while ((total_size + word_align) % 4 != 0)
+  {
+    word_align++;
+  }
+  if (total_size + word_align > PGSIZE)
+  {
+    return false;
+  }
+
+  // put the strings on the stack
+  for (int i = current_command->counter - 1; i >= 0; --i)
+  {
+    int length = strlen(current_command->parsed_array[i]) + 1;
+    *esp = (char *)*esp - length;
+    strlcpy(*esp, current_command->parsed_array[i], length);
+    current_command->parsed_array[i] = *esp;
+  }
+
+  // put word_align 0s on the stack
+  for (int i = 0; i < word_align; ++i)
+  {
+    *esp = (char *)*esp - 1;
+    *(char *)*esp = 0;
+  }
+
+  // put the pointers to the strings on the stack
+  for (int i = current_command->counter; i >= 0; --i)
+  {
+    *esp = (char *)*esp - 4;
+    *(char **)*esp = current_command->parsed_array[i];
+  }
+
+  // put the metadata (argv pointer, argc, and the return address) on the
+  // stack
+  char **argv_addr = *esp;
+  *esp = (char *)*esp - 4;
+  *(char ***)*esp = argv_addr;
+  *esp = (char *)*esp - 4;
+  *(int *)*esp = current_command->counter;
+  *esp = (char *)*esp - 4;
+  *(int *)*esp = 0;
+  return true;
+  // hex_dump((uintptr_t)*esp, *esp, (char *)PHYS_BASE - (char *)*esp, true);
 }
 
 /**

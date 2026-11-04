@@ -10,6 +10,9 @@
 #include "vm/page.h"
 #include "vm/swap.h"
 
+struct lock frame_lock;
+struct list alloc_frames;
+
 void frame_init(void)
 {
   list_init(&alloc_frames);
@@ -51,6 +54,7 @@ struct ft_entry *frame_eviction(struct spt_entry *spte)
 
   lock_acquire(&frame_lock);
   struct list_elem *e = list_begin(&alloc_frames);
+  victim = list_entry(e, struct ft_entry, elem);
 
   for (int i = 0; i < 3; i++)
   {
@@ -132,9 +136,9 @@ void free_frame(struct spt_entry *spte)
       if (fte->page->uaddr == spte->uaddr)
       {
         pagedir_clear_page(fte->owner->pagedir, fte->page->uaddr);
-        list_remove(fte);
+        list_remove(&fte->elem);
         lock_release(&frame_lock);
-        
+
         palloc_free_page(fte->kvaddr);
         free(fte);
         return;

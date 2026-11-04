@@ -35,7 +35,7 @@ void spte_init(struct spt_entry *spte, void *uaddr_, bool w, uint32_t ofs, uint3
                struct file *file_);
 unsigned spt_hash(const struct hash_elem *p_, void *aux UNUSED);
 bool spt_less(const struct hash_elem *a_, const struct hash_elem *b_, void *aux UNUSED);
-struct spt_entry *spte_lookup(struct hash spt, const void *addr);
-void free_spte(struct hash_elem* e, void* aux UNUSED);
+struct spt_entry *spte_lookup(struct hash *spt, const void *addr);
+void free_spte(struct hash_elem *e, void *aux UNUSED);
 
 #endif /* VM/page.h */

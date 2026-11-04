@@ -14,6 +14,10 @@
 #include "threads/thread.h"
 #include "userprog/pagedir.h"
 
+struct block *swap_space;
+struct bitmap *swap_slots;
+struct lock swap_lock;
+
 /* Initializes the swap setup. */
 void swap_init(void)
 {
@@ -58,6 +62,6 @@ void free_slot(size_t slot, void *addr)
     }
 
     lock_acquire(&swap_lock);
-    bitmap_reset(swap_space, slot);
+    bitmap_reset(swap_slots, slot);
     lock_release(&swap_lock);
 }

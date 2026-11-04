@@ -45,13 +45,13 @@ bool spt_less(const struct hash_elem *a_, const struct hash_elem *b_, void *aux 
 }
 
 /* Returns the spte for an address of NULL if there is no corresponding entry. */
-struct spt_entry *spte_lookup(struct hash spt, const void *addr)
+struct spt_entry *spte_lookup(struct hash* spt, const void *addr)
 {
     struct spt_entry spte;
     struct hash_elem *e;
 
     spte.uaddr = pg_round_down(addr);
-    e = hash_find(&spt, &spte.hash_elem);
+    e = hash_find(spt, &spte.hash_elem);
     return e != NULL ? hash_entry(e, struct spt_entry, hash_elem) : NULL;
 }
 
@@ -65,7 +65,7 @@ void free_spte(struct hash_elem *e, void *aux UNUSED)
     }
     else if (spte->swapped)
     {
-        bitmap_reset(swap_space, spte->swap_slot);
+        bitmap_reset(swap_slots, spte->swap_slot);
     }
 
     free(spte);

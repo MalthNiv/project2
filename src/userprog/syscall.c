@@ -106,7 +106,38 @@ void check_addr(void *addr, int fd, struct intr_frame *f, bool is_fd)
       if (!temp || is_kernel_vaddr(temp) ||
           !pagedir_get_page(thread_current()->pagedir, temp))
       {
-        bad_exit(f);
+        // does the stack need to be expanded?
+        if(temp && !is_kernel_vaddr(temp) && temp - f->esp < 4096){ //check the math here
+          uint8_t *kpage;
+  bool success = false;
+
+  kpage = palloc_get_page(PAL_USER | PAL_ZERO);
+  if (kpage != NULL)
+  {
+    success = install_page(((uint8_t *)f->esp) + PGSIZE, kpage, true); // check math
+    if (!success)
+    {
+      palloc_free_page(kpage);
+      return success;
+    }
+  }
+        } else if(temp && !is_kernel_vaddr(temp) && temp - f->esp > 4096){
+bool success = false;
+
+  kpage = palloc_get_page(PAL_USER | PAL_ZERO);
+  if (kpage != NULL)
+  {
+    success = install_page(((uint8_t *)f->esp) - PGSIZE, kpage, true); // check math
+    if (!success)
+    {
+      palloc_free_page(kpage);
+      return success;
+    }
+  }
+        } else {
+          bad_exit(f);
+        }
+        
       }
     }
   }

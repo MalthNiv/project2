@@ -62,47 +62,52 @@ struct ft_entry *frame_eviction(struct spt_entry *spte)
     {
       struct ft_entry *temp = list_entry(e, struct ft_entry, elem);
 
-      uint32_t *pd = temp->owner->pagedir;
-      void *uaddr = temp->page->uaddr;
-
-      bool a = pagedir_is_accessed(pd, uaddr);
-      bool d = pagedir_is_dirty(pd, uaddr);
-
-      if (!a && !d)
+      if (!temp->locked)
       {
-        victim = temp;
-        found = true;
-        break;
-      }
-      else if (i > 0 && !a && d)
-      {
-        victim = temp;
-        break;
-      }
-      else // default because victim cannot be null after the loop is done
-      {
-        victim = temp;
+        uint32_t *pd = temp->owner->pagedir;
+        void *uaddr = temp->page->uaddr;
+
+        bool a = pagedir_is_accessed(pd, uaddr);
+        bool d = pagedir_is_dirty(pd, uaddr);
+
+        if (!a && !d)
+        {
+          victim = temp;
+          found = true;
+          break;
+        }
+        else if (i > 0 && !a && d)
+        {
+          victim = temp;
+          break;
+        }
+        else // default because victim cannot be null after the loop is done
+        {
+          victim = temp;
+        }
+
+        if (i == 1)
+        {
+          pagedir_set_accessed(pd, uaddr, false);
+        }
+
+        if (found)
+        {
+          break;
+        }
       }
 
-      if (i == 1)
-      {
-        pagedir_set_accessed(pd, uaddr, false);
-      }
-    }
-
-    if (found)
-    {
-      break;
+      e = list_next(e);
     }
   }
 
   // Update spte of victim
-  victim->page->swapped = true;
   victim->page->is_loaded = false;
 
   // Do swap and set swap slot in spte if page is dirty
   if (pagedir_is_dirty(victim->owner->pagedir, victim->page->uaddr))
   {
+    victim->page->swapped = true;
     int slot = alloc_swap_slot(victim->kvaddr);
 
     if (slot == -1)
@@ -133,13 +138,15 @@ void free_frame(struct spt_entry *spte)
     {
       struct ft_entry *fte = list_entry(e, struct ft_entry, elem);
 
-      if (fte->page->uaddr == spte->uaddr)
+      if (fte->page->uaddr == spte->uaddr && fte->owner == thread_current())
       {
-        pagedir_clear_page(fte->owner->pagedir, fte->page->uaddr);
+        if (fte->owner->pagedir != NULL)
+        {
+          pagedir_clear_page(fte->owner->pagedir, fte->page->uaddr);
+          palloc_free_page(fte->kvaddr);
+        }
         list_remove(&fte->elem);
         lock_release(&frame_lock);
-
-        palloc_free_page(fte->kvaddr);
         free(fte);
         return;
       }

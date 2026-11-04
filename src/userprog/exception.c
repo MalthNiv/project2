@@ -174,7 +174,6 @@ static void page_fault(struct intr_frame *f)
    struct spt_entry *spte = spte_lookup(&thread_current()->spt, fault_addr);
    if (!spte) // for now, will change for stack growth
    {
-      // printf("DEBUG: SPTE not found for %p\n", fault_addr);
       bad_exit(f);
    }
 
@@ -195,7 +194,6 @@ static void page_fault(struct intr_frame *f)
       int bytes_read = file_read(spte->file, frame->kvaddr, spte->read_bytes);
       if (bytes_read != (int)spte->read_bytes)
       {
-         // printf("DEBUG: File read mismatch! Expected %d, got %d\n", spte->read_bytes, bytes_read);
          free(frame);
          bad_exit(f);
       }
@@ -218,7 +216,6 @@ static void page_fault(struct intr_frame *f)
 
    if (!set)
    {
-      // printf("DEBUG: pagedir_set_page failed for %p\n", spte->uaddr);
       free(frame);
       bad_exit(f);
    }

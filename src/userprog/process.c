@@ -220,21 +220,22 @@ void process_exit(void)
   struct thread *cur = thread_current();
   uint32_t *pd;
 
-  lock_acquire(&lock_file);
-
   // null out file descriptors and close files
   for (int i = 0; i < 128; i++)
   {
     if (cur->fd_table[i] != NULL)
     {
+      lock_acquire(&lock_file);
       file_close(cur->fd_table[i]);
+      lock_release(&lock_file);
       cur->fd_table[i] = NULL;
     }
   }
 
+  lock_acquire(&lock_file);
   file_close(cur->running_file);
-  cur->running_file = NULL;
   lock_release(&lock_file);
+  cur->running_file = NULL;
 
   // stores the child's PCB on a list
   while (!list_empty(&cur->children_held))
@@ -270,8 +271,6 @@ void process_exit(void)
     cur->my_status = NULL;
   }
 
-  hash_destroy(&cur->spt, free_spte);
-
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -288,6 +287,8 @@ void process_exit(void)
     pagedir_activate(NULL);
     pagedir_destroy(pd);
   }
+
+  hash_destroy(&cur->spt, free_spte);
 }
 
 /* Sets up the CPU for running user code in the current

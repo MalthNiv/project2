@@ -12,6 +12,9 @@
 #include "threads/vaddr.h"
 #include "userprog/pagedir.h"
 #include "userprog/process.h"
+#include "vm/frame.h"
+#include "vm/page.h"
+#include "vm/swap.h"
 
 struct lock lock_file;
 
@@ -119,7 +122,7 @@ void check_addr(void *start, void *end, int fd, struct intr_frame *f, bool is_fd
         bad_exit(f);
       }
 
-      start_page += PGSIZE;
+      start_page = (char *)start_page + PGSIZE;
     }
   }
 }

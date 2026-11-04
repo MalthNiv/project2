@@ -48,7 +48,7 @@ struct ft_entry *frame_eviction(struct spt_entry *spte)
   // Getting our victims
   struct ft_entry *victim;
   bool found = false;
-  
+
   lock_acquire(&frame_lock);
   struct list_elem *e = list_begin(&alloc_frames);
 
@@ -94,27 +94,53 @@ struct ft_entry *frame_eviction(struct spt_entry *spte)
 
   // Update spte of victim
   victim->page->swapped = true;
+  victim->page->is_loaded = false;
 
-  // Do swap and set swap slot in spte
-  int slot = alloc_swap_slot(victim->kvaddr);
-
-  if (slot == -1)
+  // Do swap and set swap slot in spte if page is dirty
+  if (pagedir_is_dirty(victim->owner->pagedir, victim->page->uaddr))
   {
-    lock_release(&frame_lock);
-    return NULL;
-  }
+    int slot = alloc_swap_slot(victim->kvaddr);
 
-  victim->page = spte;
-  victim->page->swap_slot = slot;
-  lock_release(&frame_lock);
+    if (slot == -1)
+    {
+      lock_release(&frame_lock);
+      return NULL;
+    }
+
+    victim->page->swap_slot = slot;
+  }
 
   // Clear pagedir
   pagedir_clear_page(victim->owner->pagedir, victim->page->uaddr);
+  victim->page = spte;
 
+  lock_release(&frame_lock);
   return victim;
 }
 
 void free_frame(struct spt_entry *spte)
 {
-  return;
+  lock_acquire(&frame_lock);
+
+  if (!list_empty(&alloc_frames))
+  {
+    for (struct list_elem *e = list_front(&alloc_frames); e != list_end(&alloc_frames);
+         e = list_next(e))
+    {
+      struct ft_entry *fte = list_entry(e, struct ft_entry, elem);
+
+      if (fte->page->uaddr == spte->uaddr)
+      {
+        pagedir_clear_page(fte->owner->pagedir, fte->page->uaddr);
+        list_remove(fte);
+        lock_release(&frame_lock);
+        
+        palloc_free_page(fte->kvaddr);
+        free(fte);
+        return;
+      }
+    }
+  }
+
+  lock_release(&frame_lock);
 }

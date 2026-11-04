@@ -2,14 +2,18 @@
 #include <stddef.h>
 #include <string.h>
 #include <hash.h>
+#include <bitmap.h>
 
+#include "page.h"
 #include "threads/malloc.h"
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "userprog/pagedir.h"
 #include "threads/vaddr.h"
-#include "page.h"
+#include "vm/frame.h"
+#include "vm/swap.h"
 
+/* SPT entry initialization */
 void spte_init(struct spt_entry *spte, void *uaddr_, bool w, uint32_t ofs, uint32_t rb, uint32_t zb,
                struct file *file_)
 {
@@ -49,4 +53,20 @@ struct spt_entry *spte_lookup(struct hash spt, const void *addr)
     spte.uaddr = pg_round_down(addr);
     e = hash_find(&spt, &spte.hash_elem);
     return e != NULL ? hash_entry(e, struct spt_entry, hash_elem) : NULL;
+}
+
+void free_spte(struct hash_elem *e, void *aux UNUSED)
+{
+    struct spt_entry *spte = hash_entry(e, struct spt_entry, hash_elem);
+
+    if (spte->is_loaded)
+    {
+        free_frame(spte);
+    }
+    else if (spte->swapped)
+    {
+        bitmap_reset(swap_space, spte->swap_slot);
+    }
+
+    free(spte);
 }

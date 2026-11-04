@@ -231,6 +231,7 @@ void process_exit(void)
       cur->fd_table[i] = NULL;
     }
   }
+
   file_close(cur->running_file);
   cur->running_file = NULL;
   lock_release(&lock_file);
@@ -242,15 +243,18 @@ void process_exit(void)
     struct status_of_child *child =
         list_entry(elm, struct status_of_child, elem);
     lock_acquire(&child->lock_count);
+
     child->count--;
     // checks whether the PCB should be freed or not
     bool counter = child->count == 0;
+
     lock_release(&child->lock_count);
     if (counter)
     {
       free(child);
     }
   }
+
   if (cur->my_status != NULL)
   {
     // cleans up its own PCB
@@ -265,6 +269,8 @@ void process_exit(void)
     }
     cur->my_status = NULL;
   }
+
+  hash_destroy(&cur->spt, free_spte);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -584,7 +590,15 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
     spte->is_loaded = false;
     spte->file_backed = true;
     spte->swapped = false;
-    spte->all_zero = false;
+    
+    if (page_zero_bytes == PGSIZE)
+    {
+      spte->all_zero = true;
+    }
+    else
+    {
+      spte->all_zero = false;
+    }
 
     hash_insert(&thread_current()->spt, &spte->hash_elem);
 

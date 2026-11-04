@@ -181,19 +181,19 @@ static void page_fault(struct intr_frame *f)
    struct ft_entry *frame = malloc(sizeof(struct ft_entry));
    if (!frame_alloc(thread_current(), frame, spte, false))
    {
-      free_frame(frame);
+      free(frame);
       bad_exit(f);
    }
 
    // Based on boolean, load in data
-   if (spte->file_backed)
+   if (spte->file_backed && !spte->all_zero)
    {
       file_seek(spte->file, spte->page_offset);
 
       /* Load this page. */
       if (file_read(spte->file, frame->kvaddr, spte->read_bytes) != (int)spte->read_bytes)
       {
-         free_frame(frame);
+         free(frame);
          bad_exit(f);
       }
       memset((void *)((char *)frame->kvaddr + spte->read_bytes), 0, spte->zero_bytes);
@@ -211,7 +211,7 @@ static void page_fault(struct intr_frame *f)
 
    if (!set)
    {
-      free_frame(frame);
+      free(frame);
       bad_exit(f);
    }
 

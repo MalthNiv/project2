@@ -17,6 +17,7 @@
 /* Initializes the swap setup. */
 void swap_init(void)
 {
+    lock_init(&swap_lock);
     swap_space = block_get_role(BLOCK_SWAP);
     block_sector_t size = block_size(swap_space);
 
@@ -27,7 +28,10 @@ void swap_init(void)
 /* Gets a swap slot and writes the data from frame to the sectors. */
 int alloc_swap_slot(void *addr)
 {
+    lock_acquire(&swap_lock);
     size_t swap_slot = bitmap_scan_and_flip(swap_slots, 0, 1, false);
+    lock_release(&swap_lock);
+
     if (swap_slot == BITMAP_ERROR)
     {
         return -1;
@@ -53,5 +57,7 @@ void free_slot(size_t slot, void *addr)
         block_read(swap_space, start_slot + i, buf);
     }
 
+    lock_acquire(&swap_lock);
     bitmap_reset(swap_space, slot);
+    lock_release(&swap_lock);
 }

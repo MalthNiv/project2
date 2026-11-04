@@ -17,6 +17,7 @@
 
 struct block* swap_space;
 struct bitmap* swap_slots;
+struct lock swap_lock;
 
 void swap_init(void);
 int alloc_swap_slot(void *buffer);

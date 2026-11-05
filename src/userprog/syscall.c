@@ -176,7 +176,9 @@ bool check_and_grow(void *addr, void *esp, struct intr_frame *f)
   }
 
   spte->is_loaded = true;
+  lock_acquire(&frame_lock);
   frame->locked = false;
+  lock_release(&frame_lock);
   return true;
 }
 

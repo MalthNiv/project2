@@ -192,7 +192,7 @@ static void page_fault(struct intr_frame *f)
    }
 
    // Get a frame to map the spte
-   struct ft_entry *frame = frame_alloc(thread_current(), spte, false);
+   struct ft_entry *frame = frame_alloc(thread_current(), spte, true);
    if (!frame)
    {
       free(spte);
@@ -242,5 +242,8 @@ static void page_fault(struct intr_frame *f)
       pagedir_set_dirty(thread_current()->pagedir, spte->uaddr, true);
    }
 
+   lock_acquire(&frame_lock);
+   frame->locked = false;
+   lock_release(&frame_lock);
    spte->is_loaded = true;
 }

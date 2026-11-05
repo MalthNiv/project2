@@ -633,7 +633,7 @@ static bool setup_stack(void **esp, Command *current_command)
   spte->swapped = false;
   spte->all_zero = true;
 
-  struct ft_entry *frame = frame_alloc(thread_current(), spte, false);
+  struct ft_entry *frame = frame_alloc(thread_current(), spte, true);
   if (!frame)
   {
     free(spte);
@@ -695,6 +695,11 @@ static bool setup_stack(void **esp, Command *current_command)
   *(int *)*esp = current_command->counter;
   *esp = (char *)*esp - 4;
   *(int *)*esp = 0;
+
+  lock_acquire(&frame_lock);
+  frame->locked = false;
+  lock_release(&frame_lock);
+
   return true;
   // hex_dump((uintptr_t)*esp, *esp, (char *)PHYS_BASE - (char *)*esp, true);
 }

@@ -589,8 +589,13 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
     size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
     /* Lazy loading by creating spt entries */
-    struct spt_entry *spte = malloc(sizeof(struct spt_entry));
-    spte_init(spte, (void *)upage, writable, ofs, page_read_bytes, page_zero_bytes, file);
+    struct spt_entry *spte = spte_init((void *)upage, writable, ofs, page_read_bytes,
+                                       page_zero_bytes, file);
+    if (!spte)
+    {
+      free(spte);
+      return false;
+    }
 
     spte->is_loaded = false;
     spte->file_backed = true;
@@ -616,15 +621,19 @@ static bool setup_stack(void **esp, Command *current_command)
   bool success = false;
 
   // Adding the initial stack page to the spt
-  struct spt_entry *spte = malloc(sizeof(struct spt_entry));
-  spte_init(spte, ((uint8_t *)PHYS_BASE) - PGSIZE, true, 0, 0, 0, NULL);
+  struct spt_entry *spte = spte_init(((uint8_t *)PHYS_BASE) - PGSIZE, true, 0, 0, 0, NULL);
+  if (!spte)
+  {
+    free(spte);
+    return false;
+  }
 
   spte->is_loaded = true;
   spte->file_backed = false;
   spte->swapped = false;
   spte->all_zero = true;
 
-  struct ft_entry *frame = frame_alloc(thread_current(),spte,false);
+  struct ft_entry *frame = frame_alloc(thread_current(), spte, false);
   if (!frame)
   {
     free(spte);

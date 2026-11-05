@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <syscall-nr.h>
+#include <string.h>
 
 #include "devices/input.h"
 #include "devices/shutdown.h"
@@ -20,7 +21,6 @@ struct lock lock_file;
 
 static void syscall_handler(struct intr_frame *);
 void check_addr(void *start, void *end, int fd, struct intr_frame *f, bool is_fd);
-void bad_exit(struct intr_frame *f);
 void handle_halt(void);
 void handle_exit(struct intr_frame *f);
 void handle_exec(struct intr_frame *f);
@@ -43,6 +43,7 @@ void syscall_init(void)
 
 static void syscall_handler(struct intr_frame *f UNUSED)
 {
+  thread_current()->saved_esp = f->esp;
   check_addr(f->esp, (char *)f->esp + 4, 0, f, false);
   int sys_num = *((int *)f->esp);
 
@@ -103,8 +104,8 @@ void check_addr(void *start, void *end, int fd, struct intr_frame *f, bool is_fd
   }
   else // Check a pointer
   {
-    if (!start || !end || is_kernel_vaddr(start) || is_kernel_vaddr(end) ||
-        !pagedir_get_page(thread_current()->pagedir, start))
+    if (!start || !end || !is_user_vaddr(start) || !is_user_vaddr(end) ||
+        start > end)
     {
       bad_exit(f);
     }
@@ -114,9 +115,14 @@ void check_addr(void *start, void *end, int fd, struct intr_frame *f, bool is_fd
 
     while (start_page <= end_page)
     {
+      if (!is_user_vaddr(start_page))
+      {
+        bad_exit(f);
+      }
+
       struct spt_entry *spte = spte_lookup(&thread_current()->spt, start_page);
 
-      if (spte == NULL)
+      if (spte == NULL && !check_and_grow(start_page, f))
       {
         // fix during stack growth
         bad_exit(f);
@@ -125,6 +131,47 @@ void check_addr(void *start, void *end, int fd, struct intr_frame *f, bool is_fd
       start_page = (char *)start_page + PGSIZE;
     }
   }
+}
+
+bool check_and_grow(void *addr, struct intr_frame *f)
+{
+  void *max_size = (void *)((char *)PHYS_BASE - (2048 * PGSIZE));
+  if (addr < max_size)
+  {
+    return false;
+  }
+
+  void *border = (void *)((char *)thread_current()->saved_esp - 32);
+  if (addr < border)
+  {
+    return false;
+  }
+
+  struct spt_entry *spte = spte_init(addr, true, 0, 0, 0, NULL);
+  spte->file_backed = false;
+  spte->swapped = false;
+  spte->all_zero = true;
+  hash_insert(&thread_current()->spt, &spte->hash_elem);
+
+  struct ft_entry *frame = frame_alloc(thread_current(), spte, true);
+  if (!frame)
+  {
+    bad_exit(f);
+  }
+  memset(frame->kvaddr, 0, PGSIZE);
+
+  bool set = pagedir_set_page(thread_current()->pagedir, spte->uaddr, frame->kvaddr,
+                              spte->writable);
+
+  if (!set)
+  {
+    free_frame(spte);
+    bad_exit(f);
+  }
+
+  spte->is_loaded = true;
+  frame->locked = false;
+  return true;
 }
 
 void bad_exit(struct intr_frame *f)

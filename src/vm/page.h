@@ -31,8 +31,8 @@ struct spt_entry
     int swap_slot;
 };
 
-void spte_init(struct spt_entry *spte, void *uaddr_, bool w, uint32_t ofs, uint32_t rb, uint32_t zb,
-               struct file *file_);
+struct spt_entry *spte_init(void *uaddr_, bool w, uint32_t ofs, uint32_t rb, uint32_t zb,
+                            struct file *file_);
 unsigned spt_hash(const struct hash_elem *p_, void *aux UNUSED);
 bool spt_less(const struct hash_elem *a_, const struct hash_elem *b_, void *aux UNUSED);
 struct spt_entry *spte_lookup(struct hash *spt, const void *addr);

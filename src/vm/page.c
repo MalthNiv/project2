@@ -14,9 +14,15 @@
 #include "vm/swap.h"
 
 /* SPT entry initialization */
-void spte_init(struct spt_entry *spte, void *uaddr_, bool w, uint32_t ofs, uint32_t rb, uint32_t zb,
-               struct file *file_)
+struct spt_entry *spte_init(void *uaddr_, bool w, uint32_t ofs, uint32_t rb, uint32_t zb,
+                            struct file *file_)
 {
+    struct spt_entry *spte = malloc(sizeof(struct spt_entry));
+    if (!spte)
+    {
+        return NULL;
+    }
+
     spte->uaddr = uaddr_;
 
     spte->writable = w;
@@ -26,6 +32,8 @@ void spte_init(struct spt_entry *spte, void *uaddr_, bool w, uint32_t ofs, uint3
 
     spte->file = file_;
     spte->swap_slot = 0;
+
+    return spte;
 }
 
 /* Returns a hash value for page p. */
@@ -45,7 +53,7 @@ bool spt_less(const struct hash_elem *a_, const struct hash_elem *b_, void *aux 
 }
 
 /* Returns the spte for an address of NULL if there is no corresponding entry. */
-struct spt_entry *spte_lookup(struct hash* spt, const void *addr)
+struct spt_entry *spte_lookup(struct hash *spt, const void *addr)
 {
     struct spt_entry spte;
     struct hash_elem *e;

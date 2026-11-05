@@ -31,22 +31,26 @@ struct ft_entry *frame_alloc(struct thread *cur, struct spt_entry *spte, bool lo
     {
       return NULL;
     }
-    memset(fte->kvaddr,0,PGSIZE);
-    fte->locked=lock;
-    fte->owner=cur;
+
+    memset(fte->kvaddr, 0, PGSIZE);
+    fte->locked = lock;
+    fte->owner = cur;
   }
   else
   {
     // new
     fte = malloc(sizeof(struct ft_entry));
-    if(!fte){
+
+    if (!fte)
+    {
       palloc_free_page(kpage);
       return NULL;
     }
+
     fte->kvaddr = kpage;
     fte->page = spte;
     fte->locked = lock;
-    fte->owner = cur; 
+    fte->owner = cur;
     lock_acquire(&frame_lock);
     list_push_back(&alloc_frames, &fte->elem);
     lock_release(&frame_lock);

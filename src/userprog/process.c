@@ -624,11 +624,10 @@ static bool setup_stack(void **esp, Command *current_command)
   spte->swapped = false;
   spte->all_zero = true;
 
-  struct ft_entry *frame = malloc(sizeof(struct ft_entry));
-  if (!frame_alloc(thread_current(), frame, spte, false))
+  struct ft_entry *frame = frame_alloc(thread_current(),spte,false);
+  if (!frame)
   {
     free(spte);
-    free(frame);
     return false;
   }
 

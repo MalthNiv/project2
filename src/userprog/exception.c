@@ -178,15 +178,22 @@ static void page_fault(struct intr_frame *f)
    }
 
    // Get a frame to map the spte
-   struct ft_entry *frame = malloc(sizeof(struct ft_entry));
-   if (!frame_alloc(thread_current(), frame, spte, false))
+   struct ft_entry *frame = frame_alloc(thread_current(),spte,false);
+   if (!frame)
    {
-      free(frame);
       bad_exit(f);
    }
 
    // Based on boolean, load in data
-   if (spte->file_backed && !spte->all_zero)
+   bool swap_from = false;
+
+   if(spte->swapped){
+      free_slot(spte->swap_slot, frame->kvaddr);
+      spte->swapped = false;
+      swap_from = true;
+
+   }
+   else if (spte->file_backed && !spte->all_zero)
    {
       file_seek(spte->file, spte->page_offset);
 
@@ -194,16 +201,12 @@ static void page_fault(struct intr_frame *f)
       int bytes_read = file_read(spte->file, frame->kvaddr, spte->read_bytes);
       if (bytes_read != (int)spte->read_bytes)
       {
-         free(frame);
+         free_frame(spte);
          bad_exit(f);
       }
       memset((void *)((char *)frame->kvaddr + spte->read_bytes), 0, spte->zero_bytes);
    }
-   else if (spte->swapped)
-   {
-      free_slot(spte->swap_slot, frame->kvaddr);
-      spte->swapped = false;
-   }
+  
    else if (spte->all_zero)
    {
       memset(frame->kvaddr, 0, PGSIZE);
@@ -216,8 +219,11 @@ static void page_fault(struct intr_frame *f)
 
    if (!set)
    {
-      free(frame);
+      free_frame(spte);
       bad_exit(f);
+   }
+   if(swap_from){
+      pagedir_set_dirty(thread_current()->pagedir,spte->uaddr,true);
    }
 
    spte->is_loaded = true;

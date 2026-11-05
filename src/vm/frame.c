@@ -2,7 +2,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
-
+#include "threads/vaddr.h"
 #include "threads/malloc.h"
 #include "threads/palloc.h"
 #include "threads/thread.h"
@@ -19,8 +19,9 @@ void frame_init(void)
   lock_init(&frame_lock);
 }
 
-bool frame_alloc(struct thread *cur, struct ft_entry *fte, struct spt_entry *spte, bool lock)
+struct ft_entry *frame_alloc(struct thread *cur, struct spt_entry *spte, bool lock)
 {
+  struct ft_entry *fte;
   void *kpage = palloc_get_page(PAL_USER | PAL_ZERO);
 
   if (!kpage)
@@ -28,22 +29,29 @@ bool frame_alloc(struct thread *cur, struct ft_entry *fte, struct spt_entry *spt
     fte = frame_eviction(spte);
     if (!fte)
     {
-      return false;
+      return NULL;
     }
+    memset(fte->kvaddr,0,PGSIZE);
+    fte->locked=lock;
+    fte->owner=cur;
   }
   else
   {
     // new
+    fte = malloc(sizeof(struct ft_entry));
+    if(!fte){
+      palloc_free_page(kpage);
+      return NULL;
+    }
     fte->kvaddr = kpage;
     fte->page = spte;
+    fte->locked = lock;
+    fte->owner = cur; 
     lock_acquire(&frame_lock);
     list_push_back(&alloc_frames, &fte->elem);
     lock_release(&frame_lock);
   }
-
-  fte->locked = lock;
-  fte->owner = cur;
-  return true;
+  return fte;
 }
 
 struct ft_entry *frame_eviction(struct spt_entry *spte)

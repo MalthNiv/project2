@@ -5,9 +5,8 @@
 #include "threads/interrupt.h"
 
 void syscall_init(void);
-bool check_and_grow(void *addr, struct intr_frame *f);
-void bad_exit(struct intr_frame* f);
-
+bool check_and_grow(void *addr, void *esp, struct intr_frame *f);
+void bad_exit(struct intr_frame *f);
 
 extern struct lock lock_file;
 

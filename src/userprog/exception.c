@@ -174,7 +174,17 @@ static void page_fault(struct intr_frame *f)
    struct spt_entry *spte = spte_lookup(&thread_current()->spt, fault_addr);
    if (!spte)
    {
-      if (check_and_grow(fault_addr, f))
+      void *esp;
+      if (user)
+      {
+         esp = f->esp;
+      }
+      else
+      {
+         esp = thread_current()->saved_esp;
+      }
+
+      if (check_and_grow(fault_addr, esp, f))
       {
          return;
       }
@@ -185,6 +195,7 @@ static void page_fault(struct intr_frame *f)
    struct ft_entry *frame = frame_alloc(thread_current(), spte, false);
    if (!frame)
    {
+      free(spte);
       bad_exit(f);
    }
 

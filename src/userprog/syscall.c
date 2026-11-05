@@ -122,7 +122,7 @@ void check_addr(void *start, void *end, int fd, struct intr_frame *f, bool is_fd
 
       struct spt_entry *spte = spte_lookup(&thread_current()->spt, start_page);
 
-      if (spte == NULL && !check_and_grow(start_page, f))
+      if (spte == NULL && !check_and_grow(start_page, thread_current()->saved_esp, f))
       {
         // fix during stack growth
         bad_exit(f);
@@ -133,7 +133,7 @@ void check_addr(void *start, void *end, int fd, struct intr_frame *f, bool is_fd
   }
 }
 
-bool check_and_grow(void *addr, struct intr_frame *f)
+bool check_and_grow(void *addr, void *esp, struct intr_frame *f)
 {
   void *max_size = (void *)((char *)PHYS_BASE - (2048 * PGSIZE));
   if (addr < max_size)
@@ -141,13 +141,18 @@ bool check_and_grow(void *addr, struct intr_frame *f)
     return false;
   }
 
-  void *border = (void *)((char *)thread_current()->saved_esp - 32);
+  void *border = (void *)((char *)esp - 32);
   if (addr < border)
   {
     return false;
   }
 
-  struct spt_entry *spte = spte_init(addr, true, 0, 0, 0, NULL);
+  struct spt_entry *spte = spte_init(pg_round_down(addr), true, 0, 0, 0, NULL);
+  if (!spte)
+  {
+    return false;
+  }
+
   spte->file_backed = false;
   spte->swapped = false;
   spte->all_zero = true;
@@ -156,6 +161,7 @@ bool check_and_grow(void *addr, struct intr_frame *f)
   struct ft_entry *frame = frame_alloc(thread_current(), spte, true);
   if (!frame)
   {
+    free(spte);
     bad_exit(f);
   }
   memset(frame->kvaddr, 0, PGSIZE);

@@ -4,6 +4,8 @@
 #include <syscall-nr.h>
 #include <string.h>
 
+#include "lib/debug.h"
+
 #include "devices/input.h"
 #include "devices/shutdown.h"
 #include "filesys/file.h"
@@ -122,11 +124,10 @@ void check_addr(void *start, void *end, int fd, struct intr_frame *f, bool is_fd
 
       struct spt_entry *spte = spte_lookup(&thread_current()->spt, start_page);
 
-      if (spte == NULL && !check_and_grow(start_page, thread_current()->saved_esp, f))
+      /*if (spte == NULL && !check_and_grow(start_page, thread_current()->saved_esp, f))
       {
-        // fix during stack growth
         bad_exit(f);
-      }
+      }*/
 
       start_page = (char *)start_page + PGSIZE;
     }
@@ -277,7 +278,7 @@ void handle_remove(struct intr_frame *f)
   char *end = file_name;
   while (*end != '\0')
   {
-    end = end + 4;
+    end = end + 1;
   }
   check_addr(file_name, end, 0, f, false);
 
@@ -296,7 +297,7 @@ void handle_open(struct intr_frame *f)
   char *end = file_name;
   while (*end != '\0')
   {
-    end = end + 4;
+    end = end + 1;
   }
   check_addr(file_name, end, 0, f, false);
 
@@ -381,10 +382,20 @@ void handle_read(struct intr_frame *f)
   }
   check_addr(NULL, NULL, fd, f, true); // delayed checked because we needed fd == 0
 
+  if (!pin_buffer_pages(buffer, size, true))
+  {
+    bad_exit(f);
+  }
+
   // Synchronized file access
   lock_acquire(&lock_file);
   f->eax = file_read(thread_current()->fd_table[fd - 2], buffer, size);
   lock_release(&lock_file);
+
+  if (!unpin_buffer_pages(buffer, size))
+  {
+    bad_exit(f);
+  }
 }
 
 void handle_write(struct intr_frame *f)
@@ -423,10 +434,20 @@ void handle_write(struct intr_frame *f)
   }
   check_addr(NULL, NULL, fd, f, true); // delayed fd check
 
+  if (!pin_buffer_pages(buffer, size, false))
+  {
+    bad_exit(f);
+  }
+
   // Synchronized file access
   lock_acquire(&lock_file);
   f->eax = file_write(thread_current()->fd_table[fd - 2], buffer, size);
   lock_release(&lock_file);
+
+  if (!unpin_buffer_pages(buffer, size))
+  {
+    bad_exit(f);
+  }
 }
 
 void handle_seek(struct intr_frame *f)

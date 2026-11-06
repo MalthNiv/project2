@@ -25,6 +25,8 @@ void frame_init(void);
 struct ft_entry *frame_alloc(struct thread *cur, struct spt_entry *spte, bool lock);
 bool frame_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 struct ft_entry *frame_eviction(struct spt_entry *spte);
+void pin_frame(struct spt_entry* spte);
+void unpin_frame(struct spt_entry* spte);
 void free_frame(struct spt_entry *spte);
 
 #endif /* VM/frame.h */

@@ -150,6 +150,52 @@ struct ft_entry *frame_eviction(struct spt_entry *spte)
   return victim;
 }
 
+void pin_frame(struct spt_entry *spte)
+{
+  lock_acquire(&frame_lock);
+
+  if (!list_empty(&alloc_frames))
+  {
+    for (struct list_elem *e = list_front(&alloc_frames); e != list_end(&alloc_frames);
+         e = list_next(e))
+    {
+      struct ft_entry *fte = list_entry(e, struct ft_entry, elem);
+
+      if (fte->page->uaddr == spte->uaddr && fte->owner == thread_current())
+      {
+        fte->locked = true;
+        lock_release(&frame_lock);
+        return;
+      }
+    }
+  }
+
+  lock_release(&frame_lock);
+}
+
+void unpin_frame(struct spt_entry *spte)
+{
+  lock_acquire(&frame_lock);
+
+  if (!list_empty(&alloc_frames))
+  {
+    for (struct list_elem *e = list_front(&alloc_frames); e != list_end(&alloc_frames);
+         e = list_next(e))
+    {
+      struct ft_entry *fte = list_entry(e, struct ft_entry, elem);
+
+      if (fte->page->uaddr == spte->uaddr && fte->owner == thread_current())
+      {
+        fte->locked = false;
+        lock_release(&frame_lock);
+        return;
+      }
+    }
+  }
+
+  lock_release(&frame_lock);
+}
+
 void free_frame(struct spt_entry *spte)
 {
   lock_acquire(&frame_lock);

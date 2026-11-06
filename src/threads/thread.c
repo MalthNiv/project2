@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <hash.h>
+#include <bitmap.h>
 
 #include "filesys/file.h"
 #include "threads/flags.h"
@@ -184,6 +185,7 @@ tid_t thread_create(const char *name, int priority, thread_func *function,
   init_thread(t, name, priority);
   tid = t->tid = allocate_tid();
   hash_init(&t->spt, spt_hash, spt_less, NULL);
+  t->fd_slots = bitmap_create(128);
 
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame(t, sizeof *kf);
@@ -439,8 +441,6 @@ static void init_thread(struct thread *t, const char *name, int priority)
   t->magic = THREAD_MAGIC;
   list_init(&t->children_held);
 
-  t->open_spot = 0;
-  t->open_end = 0;
   t->running_file = NULL;
 
   for (int i = 0; i < 128; i++)

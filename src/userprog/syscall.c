@@ -232,7 +232,7 @@ void handle_exec(struct intr_frame *f)
   char *end = cmd_line;
   while (*end != '\0')
   {
-    end = end + 4;
+    end = end + 1;
   }
   check_addr(cmd_line, end, 0, f, false);
 
@@ -259,7 +259,7 @@ void handle_create(struct intr_frame *f)
   char *end = file_name;
   while (*end != '\0')
   {
-    end = end + 4;
+    end = end + 1;
   }
   check_addr(file_name, end, 0, f, false);
 
@@ -267,6 +267,11 @@ void handle_create(struct intr_frame *f)
   esp += 4;
   check_addr(esp, (char *)esp + 4, 0, f, false);
   unsigned size = *((unsigned *)esp);
+
+  if (size > INT32_MAX)
+  {
+    bad_exit(f);
+  }
 
   // Synchronized file create
   lock_acquire(&lock_file);
@@ -319,8 +324,9 @@ void handle_open(struct intr_frame *f)
   }
 
   struct thread *cur = thread_current();
+  int fd = bitmap_scan_and_flip(cur->fd_slots, 0, 1, false);
 
-  if (cur->open_spot == 128)
+  if (fd == (int)BITMAP_ERROR)
   {
     lock_acquire(&lock_file);
     file_close(file);
@@ -331,14 +337,8 @@ void handle_open(struct intr_frame *f)
   }
 
   // Allocating the file a file descriptor
-  cur->fd_table[cur->open_spot] = file;
-  f->eax = cur->open_spot + 2;
-
-  if (cur->open_spot == cur->open_end)
-  {
-    cur->open_end++;
-  }
-  cur->open_spot = cur->open_end;
+  cur->fd_table[fd] = file;
+  f->eax = fd + 2;
 }
 
 void handle_filesize(struct intr_frame *f)
@@ -373,7 +373,10 @@ void handle_read(struct intr_frame *f)
   unsigned size = *((unsigned *)esp);
 
   // Check size bytes of buffer
-  check_addr(buffer, (char *)buffer + size, 0, f, false);
+  if (size > 0)
+  {
+    check_addr(buffer, (char *)buffer + size - 1, 0, f, false);
+  }
 
   // Handle reading from input
   if (fd == 0)
@@ -421,7 +424,10 @@ void handle_write(struct intr_frame *f)
   unsigned size = *((unsigned *)esp);
 
   // Check size bytes of buffer
-  check_addr(buffer, (char *)buffer + size, 0, f, false);
+  if (size > 0)
+  {
+    check_addr(buffer, (char *)buffer + size - 1, 0, f, false);
+  }
 
   // Handle writing to console
   if (fd == 1)
@@ -503,5 +509,5 @@ void handle_close(struct intr_frame *f)
   file_close(cur->fd_table[fd - 2]);
   lock_release(&lock_file);
   cur->fd_table[fd - 2] = NULL;
-  cur->open_spot = fd - 2;
+  bitmap_reset(cur->fd_slots, fd - 2);
 }

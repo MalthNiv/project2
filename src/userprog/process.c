@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <bitmap.h>
 
 #include "filesys/directory.h"
 #include "filesys/file.h"
@@ -289,6 +290,7 @@ void process_exit(void)
   }
 
   hash_destroy(&cur->spt, free_spte);
+  bitmap_destroy(cur->fd_slots);
 }
 
 /* Sets up the CPU for running user code in the current

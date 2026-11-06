@@ -29,6 +29,7 @@ struct spt_entry
     /* Location of file data*/
     struct file *file;
     int swap_slot;
+    struct lock spte_lock;
 };
 
 struct spt_entry *spte_init(void *uaddr_, bool w, uint32_t ofs, uint32_t rb, uint32_t zb,

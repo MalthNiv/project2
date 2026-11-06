@@ -197,9 +197,10 @@ static void page_fault(struct intr_frame *f)
    {
       bad_exit(f);
    }
-
+   
+   spte->is_loaded = true;
    lock_acquire(&frame_lock);
    frame->locked = false;
    lock_release(&frame_lock);
-   spte->is_loaded = true;
+   
 }

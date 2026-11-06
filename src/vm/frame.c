@@ -84,13 +84,13 @@ struct ft_entry *frame_eviction(struct spt_entry *spte)
         bool a = pagedir_is_accessed(pd, uaddr);
         bool d = pagedir_is_dirty(pd, uaddr);
 
-        if (!a && !d)
+        if (!a && !d && lock_try_acquire(&temp->page->spte_lock))
         {
           victim = temp;
           found = true;
           break;
         }
-        else if (i > 0 && !a && d)
+        else if (i > 0 && !a && d && lock_try_acquire(&temp->page->spte_lock))
         {
           victim = temp;
           found = true;
@@ -115,40 +115,39 @@ struct ft_entry *frame_eviction(struct spt_entry *spte)
       break;
     }
   }
-
+  if(victim && !found && !lock_try_acquire(&victim->page->spte_lock)){
+    victim = NULL;
+  }
   if (!victim)
   {
     lock_release(&frame_lock);
     return NULL;
   }
 
+  struct spt_entry *old = victim->page;
   victim->locked = true;
 
-  bool is_dirty = pagedir_is_dirty(victim->owner->pagedir, victim->page->uaddr);
   pagedir_clear_page(victim->owner->pagedir, victim->page->uaddr);
-
-  // Do swap and set swap slot in spte if page is dirty
+  bool is_dirty = pagedir_is_dirty(victim->owner->pagedir, victim->page->uaddr);
+  old->is_loaded = false;
+  victim->page = spte;
+  lock_release(&frame_lock);
+  // // Do swap and set swap slot in spte if page is dirty
   if (is_dirty)
   {
     int slot = alloc_swap_slot(victim->kvaddr);
 
     if (slot == -1)
     {
-      lock_acquire(&frame_lock);
-      victim->locked = false;
-      lock_release(&frame_lock);
-      return NULL;
+      PANIC("swap is full");
     }
+    old->swap_slot = slot;
+    old->swapped = true;
 
-    victim->page->swap_slot = slot;
-    victim->page->swapped = true;
+
   }
 
-  // Clear pagedir
-  victim->page->is_loaded = false;
-  victim->page = spte;
-
-  lock_release(&frame_lock);
+  lock_release(&old->spte_lock);
   return victim;
 }
 

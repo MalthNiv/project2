@@ -34,6 +34,7 @@ struct spt_entry *spte_init(void *uaddr_, bool w, uint32_t ofs, uint32_t rb, uin
 
     spte->file = file_;
     spte->swap_slot = 0;
+    lock_init(&spte->spte_lock);
 
     return spte;
 }
@@ -68,10 +69,12 @@ struct spt_entry *spte_lookup(struct hash *spt, const void *addr)
 /* Loads a page of data and attaches a frame to an spte */
 struct ft_entry *alloc_and_load(struct spt_entry *spte)
 {
+    lock_acquire(&spte->spte_lock);
     // Get a frame to map the spte
     struct ft_entry *frame = frame_alloc(thread_current(), spte, true);
     if (!frame)
     {
+        lock_release(&spte->spte_lock);
         free(spte);
         return NULL;
     }
@@ -94,6 +97,7 @@ struct ft_entry *alloc_and_load(struct spt_entry *spte)
         if (bytes_read != (int)spte->read_bytes)
         {
             free_frame(spte);
+            lock_release(&spte->spte_lock);
             return NULL;
         }
         memset((void *)((char *)frame->kvaddr + spte->read_bytes), 0, spte->zero_bytes);
@@ -111,6 +115,7 @@ struct ft_entry *alloc_and_load(struct spt_entry *spte)
     if (!set)
     {
         free_frame(spte);
+        lock_release(&spte->spte_lock);
         return NULL;
     }
 
@@ -118,7 +123,7 @@ struct ft_entry *alloc_and_load(struct spt_entry *spte)
     {
         pagedir_set_dirty(thread_current()->pagedir, spte->uaddr, true);
     }
-
+    lock_release(&spte->spte_lock);
     return frame;
 }
 
@@ -190,6 +195,7 @@ bool unpin_buffer_pages(void *buffer, unsigned size)
 void free_spte(struct hash_elem *e, void *aux UNUSED)
 {
     struct spt_entry *spte = hash_entry(e, struct spt_entry, hash_elem);
+    lock_acquire(&spte->spte_lock);
 
     if (spte->is_loaded)
     {
@@ -199,6 +205,6 @@ void free_spte(struct hash_elem *e, void *aux UNUSED)
     {
         bitmap_reset(swap_slots, spte->swap_slot);
     }
-
+    lock_release(&spte->spte_lock);
     free(spte);
 }

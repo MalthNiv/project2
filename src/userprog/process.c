@@ -272,6 +272,12 @@ void process_exit(void)
     cur->my_status = NULL;
   }
 
+  /* Free our pages so every frame we own will leave alloc_frame
+      while our page directory still exists. Eviction cannot pick one 
+      of our frames after page directory is destroyed. */
+
+  hash_destroy(&cur->spt, free_spte);
+
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -289,7 +295,7 @@ void process_exit(void)
     pagedir_destroy(pd);
   }
 
-  hash_destroy(&cur->spt, free_spte);
+  
   bitmap_destroy(cur->fd_slots);
 }
 

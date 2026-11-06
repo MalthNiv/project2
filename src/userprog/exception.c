@@ -129,10 +129,10 @@ static void kill(struct intr_frame *f)
    [IA32-v3a] section 5.15 "Exception and Interrupt Reference". */
 static void page_fault(struct intr_frame *f)
 {
-   bool not_present; /* True: not-present page, false: writing r/o page. */
-   bool write;       /* True: access was write, false: access was read. */
-   bool user;        /* True: access by user, false: access by kernel. */
-   void *fault_addr; /* Fault address. */
+   bool not_present;  /* True: not-present page, false: writing r/o page. */
+   bool write UNUSED; /* True: access was write, false: access was read. */
+   bool user;         /* True: access by user, false: access by kernel. */
+   void *fault_addr;  /* Fault address. */
 
    /* Obtain faulting address, the virtual address that was
       accessed to cause the fault.  It may point to code or to
@@ -170,7 +170,7 @@ static void page_fault(struct intr_frame *f)
 
    printf("There is no crying in Pintos!\n"); */
 
-   // Look up the spte for the fault address
+   // Look up the spte for the fault address or if it's a stack fault
    struct spt_entry *spte = spte_lookup(&thread_current()->spt, fault_addr);
    if (!spte)
    {
@@ -192,54 +192,10 @@ static void page_fault(struct intr_frame *f)
    }
 
    // Get a frame to map the spte
-   struct ft_entry *frame = frame_alloc(thread_current(), spte, true);
+   struct ft_entry *frame = alloc_and_load(spte);
    if (!frame)
    {
-      free(spte);
       bad_exit(f);
-   }
-
-   // Based on boolean, load in data
-   bool swap_from = false;
-
-   if (spte->swapped)
-   {
-      free_slot(spte->swap_slot, frame->kvaddr);
-      spte->swapped = false;
-      swap_from = true;
-   }
-   else if (spte->file_backed && !spte->all_zero)
-   {
-      file_seek(spte->file, spte->page_offset);
-
-      /* Load this page. */
-      int bytes_read = file_read_at(spte->file, frame->kvaddr, spte->read_bytes, spte->page_offset);
-      if (bytes_read != (int)spte->read_bytes)
-      {
-         free_frame(spte);
-         bad_exit(f);
-      }
-      memset((void *)((char *)frame->kvaddr + spte->read_bytes), 0, spte->zero_bytes);
-   }
-   else if (spte->all_zero)
-   {
-      memset(frame->kvaddr, 0, PGSIZE);
-   }
-
-   // Add the page to the process's address space
-   bool set = pagedir_get_page(thread_current()->pagedir, spte->uaddr) == NULL &&
-              pagedir_set_page(thread_current()->pagedir, spte->uaddr, frame->kvaddr,
-                               spte->writable);
-
-   if (!set)
-   {
-      free_frame(spte);
-      bad_exit(f);
-   }
-
-   if (swap_from)
-   {
-      pagedir_set_dirty(thread_current()->pagedir, spte->uaddr, true);
    }
 
    lock_acquire(&frame_lock);

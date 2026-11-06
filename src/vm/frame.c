@@ -19,6 +19,7 @@ void frame_init(void)
   lock_init(&frame_lock);
 }
 
+/* Allocate a frame to an spte */
 struct ft_entry *frame_alloc(struct thread *cur, struct spt_entry *spte, bool lock)
 {
   struct ft_entry *fte;
@@ -58,6 +59,7 @@ struct ft_entry *frame_alloc(struct thread *cur, struct spt_entry *spte, bool lo
   return fte;
 }
 
+/* Enhanced clock frame eviction */
 struct ft_entry *frame_eviction(struct spt_entry *spte)
 {
   // Getting our victims
@@ -66,7 +68,7 @@ struct ft_entry *frame_eviction(struct spt_entry *spte)
 
   lock_acquire(&frame_lock);
 
-  for (int i = 0; i < 2; i++)
+  for (int i = 0; i < 3; i++)
   {
     struct list_elem *e = list_begin(&alloc_frames);
 
@@ -150,6 +152,7 @@ struct ft_entry *frame_eviction(struct spt_entry *spte)
   return victim;
 }
 
+/* Pin the frame for the associated spte */
 void pin_frame(struct spt_entry *spte)
 {
   lock_acquire(&frame_lock);
@@ -173,6 +176,7 @@ void pin_frame(struct spt_entry *spte)
   lock_release(&frame_lock);
 }
 
+/* Unpin the frame for the associated spte */
 void unpin_frame(struct spt_entry *spte)
 {
   lock_acquire(&frame_lock);
@@ -196,6 +200,7 @@ void unpin_frame(struct spt_entry *spte)
   lock_release(&frame_lock);
 }
 
+/* Free the frame associated with the spte */
 void free_frame(struct spt_entry *spte)
 {
   lock_acquire(&frame_lock);

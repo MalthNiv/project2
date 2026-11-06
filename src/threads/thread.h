@@ -113,7 +113,7 @@ struct thread
   struct status_of_child *my_status;
 
   struct hash spt;
-  void* saved_esp;
+  void *saved_esp;
   /* Owned by thread.c. */
   unsigned magic; /* Detects stack overflow. */
 };

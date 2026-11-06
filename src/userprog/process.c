@@ -628,7 +628,6 @@ static bool setup_stack(void **esp, Command *current_command)
     return false;
   }
 
-  spte->is_loaded = true;
   spte->file_backed = false;
   spte->swapped = false;
   spte->all_zero = true;
@@ -648,6 +647,8 @@ static bool setup_stack(void **esp, Command *current_command)
     hash_destroy(&thread_current()->spt, free_spte);
     return success;
   }
+
+  spte->is_loaded = true;
 
   // Setting up the stack
   *esp = PHYS_BASE;

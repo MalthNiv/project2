@@ -65,6 +65,65 @@ struct spt_entry *spte_lookup(struct hash *spt, const void *addr)
     return e != NULL ? hash_entry(e, struct spt_entry, hash_elem) : NULL;
 }
 
+/* Loads a page of data and attaches a frame to an spte */
+struct ft_entry *alloc_and_load(struct spt_entry *spte)
+{
+    // Get a frame to map the spte
+    struct ft_entry *frame = frame_alloc(thread_current(), spte, true);
+    if (!frame)
+    {
+        free(spte);
+        return NULL;
+    }
+
+    // Based on boolean, load in data
+    bool swap_from = false;
+
+    if (spte->swapped)
+    {
+        free_slot(spte->swap_slot, frame->kvaddr);
+        spte->swapped = false;
+        swap_from = true;
+    }
+    else if (spte->file_backed && !spte->all_zero)
+    {
+        file_seek(spte->file, spte->page_offset);
+
+        // Load this page
+        int bytes_read = file_read_at(spte->file, frame->kvaddr, spte->read_bytes, spte->page_offset);
+        if (bytes_read != (int)spte->read_bytes)
+        {
+            free_frame(spte);
+            return NULL;
+        }
+        memset((void *)((char *)frame->kvaddr + spte->read_bytes), 0, spte->zero_bytes);
+    }
+    else if (spte->all_zero)
+    {
+        memset(frame->kvaddr, 0, PGSIZE);
+    }
+
+    // Add the page to the process's address space
+    bool set = pagedir_get_page(thread_current()->pagedir, spte->uaddr) == NULL &&
+               pagedir_set_page(thread_current()->pagedir, spte->uaddr, frame->kvaddr,
+                                spte->writable);
+
+    if (!set)
+    {
+        free_frame(spte);
+        return NULL;
+    }
+
+    if (swap_from)
+    {
+        pagedir_set_dirty(thread_current()->pagedir, spte->uaddr, true);
+    }
+
+    return frame;
+}
+
+/* Pinning buffer pages for read() and write() so page faults do not occur during
+file_read() and file_write() */
 bool pin_buffer_pages(void *buffer, unsigned size, bool w)
 {
     void *start_page = pg_round_down(buffer);
@@ -86,55 +145,10 @@ bool pin_buffer_pages(void *buffer, unsigned size, bool w)
 
         if (!spte->is_loaded)
         {
-            // Get a frame to map the spte
-            struct ft_entry *frame = frame_alloc(thread_current(), spte, true);
+            struct ft_entry *frame = alloc_and_load(spte);
             if (!frame)
             {
-                free(spte);
                 return false;
-            }
-
-            // Based on boolean, load in data
-            bool swap_from = false;
-
-            if (spte->swapped)
-            {
-                free_slot(spte->swap_slot, frame->kvaddr);
-                spte->swapped = false;
-                swap_from = true;
-            }
-            else if (spte->file_backed && !spte->all_zero)
-            {
-                file_seek(spte->file, spte->page_offset);
-
-                /* Load this page. */
-                int bytes_read = file_read_at(spte->file, frame->kvaddr, spte->read_bytes, spte->page_offset);
-                if (bytes_read != (int)spte->read_bytes)
-                {
-                    free_frame(spte);
-                    return false;
-                }
-                memset((void *)((char *)frame->kvaddr + spte->read_bytes), 0, spte->zero_bytes);
-            }
-            else if (spte->all_zero)
-            {
-                memset(frame->kvaddr, 0, PGSIZE);
-            }
-
-            // Add the page to the process's address space
-            bool set = pagedir_get_page(thread_current()->pagedir, spte->uaddr) == NULL &&
-                       pagedir_set_page(thread_current()->pagedir, spte->uaddr, frame->kvaddr,
-                                        spte->writable);
-
-            if (!set)
-            {
-                free_frame(spte);
-                return false;
-            }
-
-            if (swap_from)
-            {
-                pagedir_set_dirty(thread_current()->pagedir, spte->uaddr, true);
             }
 
             spte->is_loaded = true;
@@ -150,6 +164,7 @@ bool pin_buffer_pages(void *buffer, unsigned size, bool w)
     return true;
 }
 
+/* Unpin buffer pages after the read() or write() has completed */
 bool unpin_buffer_pages(void *buffer, unsigned size)
 {
     void *start_page = pg_round_down(buffer);
@@ -171,6 +186,7 @@ bool unpin_buffer_pages(void *buffer, unsigned size)
     return true;
 }
 
+/* Frees the spte and the frame/swap slot associated with it */
 void free_spte(struct hash_elem *e, void *aux UNUSED)
 {
     struct spt_entry *spte = hash_entry(e, struct spt_entry, hash_elem);

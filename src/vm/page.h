@@ -33,11 +33,12 @@ struct spt_entry
 
 struct spt_entry *spte_init(void *uaddr_, bool w, uint32_t ofs, uint32_t rb, uint32_t zb,
                             struct file *file_);
+struct ft_entry *alloc_and_load(struct spt_entry *spte);
 unsigned spt_hash(const struct hash_elem *p_, void *aux UNUSED);
 bool spt_less(const struct hash_elem *a_, const struct hash_elem *b_, void *aux UNUSED);
 struct spt_entry *spte_lookup(struct hash *spt, const void *addr);
-bool pin_buffer_pages(void* buffer, unsigned size, bool w);
-bool unpin_buffer_pages(void* buffer, unsigned size);
+bool pin_buffer_pages(void *buffer, unsigned size, bool w);
+bool unpin_buffer_pages(void *buffer, unsigned size);
 void free_spte(struct hash_elem *e, void *aux UNUSED);
 
 #endif /* VM/page.h */

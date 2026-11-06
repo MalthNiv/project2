@@ -112,6 +112,7 @@ void check_addr(void *start, void *end, int fd, struct intr_frame *f, bool is_fd
       bad_exit(f);
     }
 
+    // Checking if each page has an spte
     void *start_page = pg_round_down(start);
     void *end_page = pg_round_down(end);
 
@@ -124,24 +125,27 @@ void check_addr(void *start, void *end, int fd, struct intr_frame *f, bool is_fd
 
       struct spt_entry *spte = spte_lookup(&thread_current()->spt, start_page);
 
-      /*if (spte == NULL && !check_and_grow(start_page, thread_current()->saved_esp, f))
+      if (spte == NULL && !check_and_grow(start_page, thread_current()->saved_esp, f))
       {
         bad_exit(f);
-      }*/
+      }
 
       start_page = (char *)start_page + PGSIZE;
     }
   }
 }
 
+/* Stack growth */
 bool check_and_grow(void *addr, void *esp, struct intr_frame *f)
 {
+  // Make sure stack is <= 8 MB
   void *max_size = (void *)((char *)PHYS_BASE - (2048 * PGSIZE));
   if (addr < max_size)
   {
     return false;
   }
 
+  // Uses 32-byte check because of the PUSHA instruction mentioned in project details
   void *border = (void *)((char *)esp - 32);
   if (addr < border)
   {
@@ -183,6 +187,7 @@ bool check_and_grow(void *addr, void *esp, struct intr_frame *f)
   return true;
 }
 
+/* Exit with -1 whenever necessary */
 void bad_exit(struct intr_frame *f)
 {
   f->eax = -1;

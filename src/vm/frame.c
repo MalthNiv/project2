@@ -61,15 +61,15 @@ struct ft_entry *frame_alloc(struct thread *cur, struct spt_entry *spte, bool lo
 struct ft_entry *frame_eviction(struct spt_entry *spte)
 {
   // Getting our victims
-  struct ft_entry *victim;
+  struct ft_entry *victim = NULL;
   bool found = false;
 
   lock_acquire(&frame_lock);
-  struct list_elem *e = list_begin(&alloc_frames);
-  victim = list_entry(e, struct ft_entry, elem);
 
-  for (int i = 0; i < 3; i++)
+  for (int i = 0; i < 2; i++)
   {
+    struct list_elem *e = list_begin(&alloc_frames);
+
     while (e != list_end(&alloc_frames))
     {
       struct ft_entry *temp = list_entry(e, struct ft_entry, elem);
@@ -91,6 +91,7 @@ struct ft_entry *frame_eviction(struct spt_entry *spte)
         else if (i > 0 && !a && d)
         {
           victim = temp;
+          found = true;
           break;
         }
         else // default because victim cannot be null after the loop is done
@@ -102,37 +103,47 @@ struct ft_entry *frame_eviction(struct spt_entry *spte)
         {
           pagedir_set_accessed(pd, uaddr, false);
         }
-
-        if (found)
-        {
-          break;
-        }
       }
 
       e = list_next(e);
     }
+
+    if (found)
+    {
+      break;
+    }
   }
 
-  // Update spte of victim
-  victim->page->is_loaded = false;
+  if (!victim)
+  {
+    lock_release(&frame_lock);
+    return NULL;
+  }
+
+  victim->locked = true;
+
+  bool is_dirty = pagedir_is_dirty(victim->owner->pagedir, victim->page->uaddr);
+  pagedir_clear_page(victim->owner->pagedir, victim->page->uaddr);
 
   // Do swap and set swap slot in spte if page is dirty
-  if (pagedir_is_dirty(victim->owner->pagedir, victim->page->uaddr))
+  if (is_dirty)
   {
-    victim->page->swapped = true;
     int slot = alloc_swap_slot(victim->kvaddr);
 
     if (slot == -1)
     {
+      lock_acquire(&frame_lock);
+      victim->locked = false;
       lock_release(&frame_lock);
       return NULL;
     }
 
     victim->page->swap_slot = slot;
+    victim->page->swapped = true;
   }
 
   // Clear pagedir
-  pagedir_clear_page(victim->owner->pagedir, victim->page->uaddr);
+  victim->page->is_loaded = false;
   victim->page = spte;
 
   lock_release(&frame_lock);

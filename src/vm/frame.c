@@ -115,9 +115,11 @@ struct ft_entry *frame_eviction(struct spt_entry *spte)
       break;
     }
   }
+
   if(victim && !found && !lock_try_acquire(&victim->page->spte_lock)){
     victim = NULL;
   }
+  
   if (!victim)
   {
     lock_release(&frame_lock);
@@ -132,7 +134,8 @@ struct ft_entry *frame_eviction(struct spt_entry *spte)
   old->is_loaded = false;
   victim->page = spte;
   lock_release(&frame_lock);
-  // // Do swap and set swap slot in spte if page is dirty
+
+  // Do swap and set swap slot in spte if page is dirty
   if (is_dirty)
   {
     int slot = alloc_swap_slot(victim->kvaddr);

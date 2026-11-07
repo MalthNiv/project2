@@ -272,7 +272,7 @@ void process_exit(void)
     cur->my_status = NULL;
   }
 
-  /* Free our pages so every frame we own will leave alloc_frame
+  /* Free our pages so every frame we own will leave alloc_frames
       while our page directory still exists. Eviction cannot pick one
       of our frames after page directory is destroyed. */
 

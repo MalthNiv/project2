@@ -273,7 +273,7 @@ void process_exit(void)
   }
 
   /* Free our pages so every frame we own will leave alloc_frame
-      while our page directory still exists. Eviction cannot pick one 
+      while our page directory still exists. Eviction cannot pick one
       of our frames after page directory is destroyed. */
 
   hash_destroy(&cur->spt, free_spte);
@@ -295,7 +295,6 @@ void process_exit(void)
     pagedir_destroy(pd);
   }
 
-  
   bitmap_destroy(cur->fd_slots);
 }
 
@@ -652,8 +651,8 @@ static bool setup_stack(void **esp, Command *current_command)
   success = install_page(((uint8_t *)PHYS_BASE) - PGSIZE, frame->kvaddr, true);
   if (!success)
   {
-    hash_destroy(&thread_current()->spt, free_spte);
-    return success;
+    free_frame(spte);
+    return false;
   }
 
   spte->is_loaded = true;

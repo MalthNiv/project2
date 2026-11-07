@@ -46,7 +46,7 @@ void syscall_init(void)
 static void syscall_handler(struct intr_frame *f UNUSED)
 {
   thread_current()->saved_esp = f->esp;
-  check_addr(f->esp, (char *)f->esp + 4, 0, f, false);
+  check_addr(f->esp, (char *)f->esp + 3, 0, f, false);
   int sys_num = *((int *)f->esp);
 
   switch (sys_num)
@@ -138,8 +138,14 @@ void check_addr(void *start, void *end, int fd, struct intr_frame *f, bool is_fd
 /* Stack growth */
 bool check_and_grow(void *addr, void *esp, struct intr_frame *f)
 {
+
+  if (!is_user_vaddr(addr))
+  {
+    return false;
+  }
   // Make sure stack is <= 8 MB
   void *max_size = (void *)((char *)PHYS_BASE - (2048 * PGSIZE));
+
   if (addr < max_size)
   {
     return false;
@@ -166,7 +172,6 @@ bool check_and_grow(void *addr, void *esp, struct intr_frame *f)
   struct ft_entry *frame = frame_alloc(thread_current(), spte, true);
   if (!frame)
   {
-    free(spte);
     bad_exit(f);
   }
   memset(frame->kvaddr, 0, PGSIZE);
@@ -207,7 +212,7 @@ void handle_exit(struct intr_frame *f)
 {
   // Get exit status
   char *esp = (char *)f->esp + 4;
-  check_addr(esp, (char *)esp + 4, 0, f, false);
+  check_addr(esp, (char *)esp + 3, 0, f, false);
   int status = *((int *)esp);
 
   // Status for zombies
@@ -226,7 +231,7 @@ void handle_exec(struct intr_frame *f)
   // Get command line
   char *esp = (char *)f->esp + 4;
 
-  check_addr(esp, (char *)esp + 4, 0, f, false);
+  check_addr(esp, (char *)esp + 3, 0, f, false);
   char *cmd_line = *((char **)esp);
 
   char *end = cmd_line;
@@ -243,7 +248,7 @@ void handle_wait(struct intr_frame *f)
 {
   // Get pid
   char *esp = (char *)f->esp + 4;
-  check_addr(esp, (char *)esp + 4, 0, f, false);
+  check_addr(esp, (char *)esp + 3, 0, f, false);
   tid_t pid = *((tid_t *)esp);
 
   f->eax = process_wait(pid);
@@ -253,7 +258,7 @@ void handle_create(struct intr_frame *f)
 {
   // Get file name
   char *esp = (char *)f->esp + 4;
-  check_addr(esp, (char *)esp + 4, 0, f, false);
+  check_addr(esp, (char *)esp + 3, 0, f, false);
   char *file_name = *((char **)esp);
 
   char *end = file_name;
@@ -265,7 +270,7 @@ void handle_create(struct intr_frame *f)
 
   // Get size
   esp += 4;
-  check_addr(esp, (char *)esp + 4, 0, f, false);
+  check_addr(esp, (char *)esp + 3, 0, f, false);
   unsigned size = *((unsigned *)esp);
 
   if (size > INT32_MAX)
@@ -282,7 +287,7 @@ void handle_create(struct intr_frame *f)
 void handle_remove(struct intr_frame *f)
 {
   char *esp = (char *)f->esp + 4;
-  check_addr(esp, (char *)esp + 4, 0, f, false);
+  check_addr(esp, (char *)esp + 3, 0, f, false);
   char *file_name = *((char **)esp);
 
   char *end = file_name;
@@ -301,7 +306,7 @@ void handle_open(struct intr_frame *f)
 {
   // Get file name
   char *esp = (char *)f->esp + 4;
-  check_addr(esp, (char *)esp + 4, 0, f, false);
+  check_addr(esp, (char *)esp + 3, 0, f, false);
   char *file_name = *((char **)esp);
 
   char *end = file_name;
@@ -345,7 +350,7 @@ void handle_filesize(struct intr_frame *f)
 {
   // Get file descriptor
   char *esp = (char *)f->esp + 4;
-  check_addr(esp, (char *)esp + 4, 0, f, false);
+  check_addr(esp, (char *)esp + 3, 0, f, false);
   int fd = *((int *)esp);
   check_addr(NULL, NULL, fd, f, true);
 
@@ -359,17 +364,17 @@ void handle_read(struct intr_frame *f)
 {
   // Get file descriptor
   char *esp = (char *)f->esp + 4;
-  check_addr(esp, (char *)esp + 4, 0, f, false);
+  check_addr(esp, (char *)esp + 3, 0, f, false);
   int fd = *((int *)esp);
 
   // Get buffer
   esp += 4;
-  check_addr(esp, (char *)esp + 4, 0, f, false);
+  check_addr(esp, (char *)esp + 3, 0, f, false);
   uint8_t *buffer = *((uint8_t **)esp);
 
   // Get size
   esp += 4;
-  check_addr(esp, (char *)esp + 4, 0, f, false);
+  check_addr(esp, (char *)esp + 3, 0, f, false);
   unsigned size = *((unsigned *)esp);
 
   // Check size bytes of buffer
@@ -410,17 +415,17 @@ void handle_write(struct intr_frame *f)
 {
   // Get file descriptor
   char *esp = (char *)f->esp + 4;
-  check_addr(esp, (char *)esp + 4, 0, f, false);
+  check_addr(esp, (char *)esp + 3, 0, f, false);
   int fd = *((int *)esp);
 
   // Get buffer
   esp += 4;
-  check_addr(esp, (char *)esp + 4, 0, f, false);
+  check_addr(esp, (char *)esp + 3, 0, f, false);
   char *buffer = *((char **)esp);
 
   // Get size
   esp += 4;
-  check_addr(esp, (char *)esp + 4, 0, f, false);
+  check_addr(esp, (char *)esp + 3, 0, f, false);
   unsigned size = *((unsigned *)esp);
 
   // Check size bytes of buffer
@@ -465,13 +470,13 @@ void handle_seek(struct intr_frame *f)
 {
   // Get file descriptor
   char *esp = (char *)f->esp + 4;
-  check_addr(esp, (char *)esp + 4, 0, f, false);
+  check_addr(esp, (char *)esp + 3, 0, f, false);
   int fd = *((int *)esp);
   check_addr(NULL, NULL, fd, f, true);
 
   // Get size
   esp += 4;
-  check_addr(esp, (char *)esp + 4, 0, f, false);
+  check_addr(esp, (char *)esp + 3, 0, f, false);
   unsigned pos = *((unsigned *)esp);
 
   // Synchronized file access
@@ -484,7 +489,7 @@ void handle_tell(struct intr_frame *f)
 {
   // Get file descriptor
   char *esp = (char *)f->esp + 4;
-  check_addr(esp, (char *)esp + 4, 0, f, false);
+  check_addr(esp, (char *)esp + 3, 0, f, false);
   int fd = *((int *)esp);
   check_addr(NULL, NULL, fd, f, true);
 
@@ -499,7 +504,7 @@ void handle_close(struct intr_frame *f)
 {
   // Get file descriptor
   char *esp = (char *)f->esp + 4;
-  check_addr(esp, (char *)esp + 4, 0, f, false);
+  check_addr(esp, (char *)esp + 3, 0, f, false);
   int fd = *((int *)esp);
   check_addr(NULL, NULL, fd, f, true);
 

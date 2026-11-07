@@ -14,6 +14,7 @@
 #include "filesys/file.h"
 #include "vm/frame.h"
 #include "vm/swap.h"
+#include "userprog/syscall.h"
 
 /* SPT entry initialization */
 struct spt_entry *spte_init(void *uaddr_, bool w, uint32_t ofs, uint32_t rb, uint32_t zb,
@@ -33,7 +34,11 @@ struct spt_entry *spte_init(void *uaddr_, bool w, uint32_t ofs, uint32_t rb, uin
     spte->zero_bytes = zb;
 
     spte->file = file_;
-    spte->swap_slot = 0;
+    spte->swap_slot = -1;
+    spte->is_loaded = false;
+    spte->file_backed = false;
+    spte->swapped = false;
+    spte->all_zero = false;
     lock_init(&spte->spte_lock);
 
     return spte;
@@ -75,7 +80,6 @@ struct ft_entry *alloc_and_load(struct spt_entry *spte)
     if (!frame)
     {
         lock_release(&spte->spte_lock);
-        free(spte);
         return NULL;
     }
 
@@ -90,10 +94,18 @@ struct ft_entry *alloc_and_load(struct spt_entry *spte)
     }
     else if (spte->file_backed && !spte->all_zero)
     {
-        file_seek(spte->file, spte->page_offset);
 
+        bool held = lock_held_by_current_thread(&lock_file);
+        if (!held)
+        {
+            lock_acquire(&lock_file);
+        }
         // Load this page
         int bytes_read = file_read_at(spte->file, frame->kvaddr, spte->read_bytes, spte->page_offset);
+        if (!held)
+        {
+            lock_release(&lock_file);
+        }
         if (bytes_read != (int)spte->read_bytes)
         {
             free_frame(spte);
@@ -203,7 +215,9 @@ void free_spte(struct hash_elem *e, void *aux UNUSED)
     }
     else if (spte->swapped)
     {
+        lock_acquire(&swap_lock);
         bitmap_reset(swap_slots, spte->swap_slot);
+        lock_release(&swap_lock);
     }
     lock_release(&spte->spte_lock);
     free(spte);

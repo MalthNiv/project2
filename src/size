@@ -1,0 +1,27 @@
+devices/block.c:  return list_elem_to_block (list_next (&block->list_elem));
+devices/block.c:      if (!strcmp (name, block->name))
+devices/block.c:  if (sector >= block->size)
+devices/block.c:             block_name (block), sector, block->size);
+devices/block.c:  block->ops->read (block->aux, sector, buffer);
+devices/block.c:  block->read_cnt++;
+devices/block.c:  ASSERT (block->type != BLOCK_FOREIGN);
+devices/block.c:  block->ops->write (block->aux, sector, buffer);
+devices/block.c:  block->write_cnt++;
+devices/block.c:block_sector_t block_size (struct block *block) { return block->size; }
+devices/block.c:const char *block_name (struct block *block) { return block->name; }
+devices/block.c:enum block_type block_type (struct block *block) { return block->type; }
+devices/block.c:          printf ("%s (%s): %llu reads, %llu writes\n", block->name,
+devices/block.c:                  block_type_name (block->type), block->read_cnt,
+devices/block.c:                  block->write_cnt);
+devices/block.c:  list_push_back (&all_blocks, &block->list_elem);
+devices/block.c:  strlcpy (block->name, name, sizeof block->name);
+devices/block.c:  block->type = type;
+devices/block.c:  block->size = size;
+devices/block.c:  block->ops = ops;
+devices/block.c:  block->aux = aux;
+devices/block.c:  block->read_cnt = 0;
+devices/block.c:  block->write_cnt = 0;
+devices/block.c:  printf ("%s: %'" PRDSNu " sectors (", block->name, block->size);
+devices/block.c:  print_human_readable_size ((uint64_t) block->size * BLOCK_SECTOR_SIZE);
+misc/bochs-2.6.2-build.sh:cat $PINTOSDIR/src/misc/bochs-2.6.2-block-device-check.patch | patch -p1
+tests/lib.c:  /* Read the file block-by-block, comparing data as we go. */
